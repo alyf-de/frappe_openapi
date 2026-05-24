@@ -8,6 +8,7 @@ html {
 }
 
 :root {
+	color-scheme: light dark;
 	--openapi-bg: #f7f7f7;
 	--openapi-surface: #ffffff;
 	--openapi-surface-muted: #f3f3f3;
@@ -19,10 +20,32 @@ html {
 	--openapi-accent: #111111;
 	--openapi-accent-soft: #eeeeee;
 	--openapi-danger: #b42318;
+	--openapi-danger-border: rgba(155, 48, 45, 0.24);
 	--openapi-danger-soft: #fef3f2;
 	--openapi-focus: #111111;
+	--openapi-focus-ring: rgba(17, 17, 17, 0.08);
 	--openapi-radius-sm: 6px;
 	--openapi-radius-lg: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--openapi-bg: #1c2022;
+		--openapi-surface: #161a23;
+		--openapi-surface-muted: #202634;
+		--openapi-border: #2a3040;
+		--openapi-border-strong: #3a4254;
+		--openapi-text: #f5f5f5;
+		--openapi-muted: #a1a1aa;
+		--openapi-soft: #71717a;
+		--openapi-accent: #f5f5f5;
+		--openapi-accent-soft: #252b39;
+		--openapi-danger: #f97066;
+		--openapi-danger-border: rgba(249, 112, 102, 0.32);
+		--openapi-danger-soft: #3b1818;
+		--openapi-focus: #d4d4d8;
+		--openapi-focus-ring: rgba(212, 212, 216, 0.18);
+	}
 }
 
 body {
@@ -109,7 +132,7 @@ body {
 #frappe-openapi-filter:focus {
 	background: var(--openapi-surface);
 	border-color: var(--openapi-accent);
-	box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.08);
+	box-shadow: 0 0 0 2px var(--openapi-focus-ring);
 	outline: none;
 }
 
@@ -318,7 +341,7 @@ body {
 #frappe-openapi-nav-error {
 	display: none;
 	margin-bottom: 16px;
-	border: 1px solid rgba(155, 48, 45, 0.24);
+	border: 1px solid var(--openapi-danger-border);
 	border-radius: var(--openapi-radius-sm);
 	background: var(--openapi-danger-soft);
 	color: var(--openapi-danger);
