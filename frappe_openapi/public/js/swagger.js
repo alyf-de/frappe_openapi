@@ -7,11 +7,13 @@ const filterInput = document.querySelector("#frappe-openapi-filter");
 const filterStatus = document.querySelector("#frappe-openapi-filter-status");
 
 const SEARCH_INDEX_URL = "/openapi/search-index.json";
+const GENERATED_MANIFEST_URL = "/openapi/generated/manifest.json";
 const MAX_SEARCH_RESULTS = 50;
 const appIndexCache = new Map();
 const moduleIndexCache = new Map();
 const doctypeIndexCache = new Map();
 let searchIndexCache = null;
+let generatedManifestCache = null;
 let currentFilterQuery = "";
 
 const searchResults = document.createElement("div");
@@ -86,8 +88,28 @@ async function fetchSearchIndex() {
 	return searchIndexCache;
 }
 
+async function fetchGeneratedManifest() {
+	if (!generatedManifestCache) {
+		generatedManifestCache = fetch(GENERATED_MANIFEST_URL, { credentials: "same-origin" })
+			.then((response) => response.ok ? response.json() : null)
+			.catch(() => null);
+	}
+	return generatedManifestCache;
+}
+
 function documentLinks(document) {
 	return document["x-frappe-openapi-documents"] || {};
+}
+
+function generatedSpecDocuments(manifest) {
+	return sortedEntries(manifest?.apps).map(([app, artifact]) => ({
+		kind: "link",
+		label: app,
+		type: "Generated App",
+		url: artifact.url,
+		level: 0,
+		keywords: `${app} generated bundle sdk openapi`,
+	}));
 }
 
 function refreshActiveFilter() {
@@ -216,8 +238,10 @@ function renderNavigationEntry(documentEntry, sectionElement) {
 
 async function buildNavigation() {
 	const index = await fetchSpec("/openapi.json");
+	const generatedManifest = await fetchGeneratedManifest();
 	const documents = documentLinks(index);
 	const apps = sortedEntries(documents.apps);
+	const generatedSpecs = generatedSpecDocuments(generatedManifest);
 	const genericApiUrl = documents.generic_api_v2 || index.$self || "/openapi.json";
 	const primary = [
 		{ kind: "overview", label: "Overview", type: "Welcome", level: 0 },
@@ -236,6 +260,7 @@ async function buildNavigation() {
 
 	return [
 		{ title: "Core", documents: primary, open: true },
+		{ title: "Generated Specs", documents: generatedSpecs, open: false },
 		{
 			title: "Apps",
 			documents: apps.map(([app, url]) => ({
