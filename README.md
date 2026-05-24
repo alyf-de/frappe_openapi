@@ -12,6 +12,12 @@ bench get-app $URL_OF_THIS_REPO --branch develop
 bench install-app frappe_openapi
 ```
 
+### Usage
+
+After installing the app, open Swagger UI at `/swagger`.
+
+The OpenAPI JSON is available at `/openapi.json`.
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
