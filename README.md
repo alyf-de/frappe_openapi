@@ -14,9 +14,40 @@ bench install-app frappe_openapi
 
 ### Usage
 
-After installing the app, open Swagger UI at `/swagger`.
+After installing the app, open Swagger UI at `/swagger` to browse the current
+site interactively. The Swagger sidebar loads the dynamic OpenAPI tree lazily,
+so it is useful for exploring installed apps, modules, **DocTypes**, and
+whitelisted methods without generating files first.
 
-The OpenAPI JSON is available at `/openapi.json`.
+The generic dynamic OpenAPI JSON is available at `/openapi.json`. Use this when
+you need the current site's generic Frappe API shape, or follow the linked
+dynamic documents under `/openapi/...` for app, module, **DocType**, schema, and
+method-specific views.
+
+### Generated specs
+
+Generated specs are bundled, SDK-friendly OpenAPI documents written for a
+specific site. Generate them with the bench command:
+
+```bash
+bench --site mysite generate-openapi --app my_app
+```
+
+Use `--app` more than once to generate selected app bundles, or use `--all-apps`
+to generate bundles for every installed app. By default, artifacts are written
+under the site's private OpenAPI directory. Use `--output ./openapi` when you
+want to export the manifest and app bundles to another directory for SDK
+generation or publication.
+
+The generated routes are:
+
+- `/openapi/generated/manifest.json`
+- `/openapi/generated/apps/{app}.json`
+
+Generated routes are authenticated by default and intended for internal site
+documentation unless you explicitly publish the generated files or otherwise
+allow public access. Keep internal specs private when they include site-specific
+metadata such as Custom Fields or Property Setters.
 
 ### User profiles
 
