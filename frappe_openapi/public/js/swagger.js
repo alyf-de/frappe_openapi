@@ -11,7 +11,6 @@ const GENERATED_MANIFEST_URL = "/openapi/generated/manifest.json";
 const MAX_SEARCH_RESULTS = 50;
 const appIndexCache = new Map();
 const moduleIndexCache = new Map();
-const doctypeIndexCache = new Map();
 let searchIndexCache = null;
 let generatedManifestCache = null;
 let currentFilterQuery = "";
@@ -115,14 +114,6 @@ async function fetchModuleIndex(url) {
 		moduleIndexCache.set(url, fetchSpec(url));
 	}
 	return moduleIndexCache.get(url);
-}
-
-async function fetchDocTypeIndex(url) {
-	url = normalizeInternalSpecUrl(url);
-	if (!doctypeIndexCache.has(url)) {
-		doctypeIndexCache.set(url, fetchSpec(url));
-	}
-	return doctypeIndexCache.get(url);
 }
 
 async function fetchSearchIndex() {
@@ -424,26 +415,16 @@ async function loadModuleDetails(group, app, module, moduleUrl) {
 		for (const [doctype, doctypeDocument] of doctypes) {
 			const doctypeUrl = getDocTypeUrl(doctypeDocument);
 			const fileMethods = getDocTypeFileMethods(doctypeDocument);
-			renderLazyGroup(
+			renderNavigationLink(
 				{
+					kind: "link",
 					label: doctype,
 					type: "DocType",
 					url: doctypeUrl,
-					clickable: true,
 					level: 2,
 					keywords: `${app} ${module} crud controller file methods ${Object.keys(fileMethods).length} file methods`,
 				},
-				group,
-				(doctypeGroup) => {
-					loadDocTypeDetails(
-						doctypeGroup,
-						app,
-						module,
-						doctype,
-						doctypeUrl,
-						fileMethods
-					);
-				}
+				group
 			);
 		}
 		if (!Object.keys(documents.methods || {}).length && !doctypes.length) {
@@ -458,44 +439,6 @@ async function loadModuleDetails(group, app, module, moduleUrl) {
 		delete group.dataset.loading;
 		setGroupLoading(group, false);
 	}
-}
-
-async function loadDocTypeDetails(group, app, module, doctype, doctypeUrl, moduleFileMethods) {
-	group.dataset.loading = "true";
-	setGroupLoading(group, true);
-	clearLazyContent(group);
-	const loading = renderStatus(group, "Loading DocType...", 3);
-	try {
-		const doctypeIndex = await fetchDocTypeIndex(doctypeUrl);
-		const fileMethods = documentLinks(doctypeIndex).file_methods || moduleFileMethods;
-		const controllerMethods = doctypeIndex["x-frappe-doc-methods"] || [];
-		loading.remove();
-		renderStatus(group, docTypeDetailSummary(controllerMethods, fileMethods), 3);
-		group.dataset.loaded = "true";
-		refreshActiveFilter();
-	} catch (error) {
-		loading.remove();
-		renderStatus(group, error.message, 3, "error");
-	} finally {
-		delete group.dataset.loading;
-		setGroupLoading(group, false);
-	}
-}
-
-function docTypeDetailSummary(controllerMethods, fileMethods) {
-	const details = ["CRUD operations"];
-	if (controllerMethods.length) {
-		details.push(`${controllerMethods.length} controller ${pluralize("method", controllerMethods.length)}`);
-	}
-	const fileMethodCount = Object.keys(fileMethods || {}).length;
-	if (fileMethodCount) {
-		details.push(`${fileMethodCount} file-level ${pluralize("method", fileMethodCount)}`);
-	}
-	return `Spec includes ${details.join(", ")}.`;
-}
-
-function pluralize(label, count) {
-	return count === 1 ? label : `${label}s`;
 }
 
 function showOverview() {

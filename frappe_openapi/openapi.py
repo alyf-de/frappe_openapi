@@ -49,6 +49,12 @@ DOCTYPE_OPERATION_GROUPS = {
 	"controller": "Controller RPC",
 	"file": "File-level RPC",
 }
+DOCTYPE_OPERATION_DESCRIPTIONS = {
+	"crud": "List, create, read, update, and delete {doctype} documents.",
+	"standard": "Read metadata, count documents, and prepare copied {doctype} documents.",
+	"controller": "Run whitelisted {doctype} controller methods against an existing document.",
+	"file": "Run whitelisted functions defined in the {doctype} DocType module.",
+}
 
 
 def get_document(path: str) -> dict:
@@ -856,10 +862,10 @@ def doctype_operation_tags(doctype: str) -> list[dict]:
 	return [
 		{
 			"name": doctype_operation_tag(group),
-			"description": f"{label} operations for {doctype}.",
+			"description": DOCTYPE_OPERATION_DESCRIPTIONS[group].format(doctype=doctype),
 			"x-frappe-operation-group": group,
 		}
-		for group, label in DOCTYPE_OPERATION_GROUPS.items()
+		for group in DOCTYPE_OPERATION_GROUPS
 	]
 
 
