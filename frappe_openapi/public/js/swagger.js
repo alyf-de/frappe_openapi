@@ -41,6 +41,50 @@ function matchesSearchQuery(text, query) {
 	return normalizedQuery.split(" ").every((part) => normalizedText.includes(part));
 }
 
+function scrubDottedPathPart(value) {
+	return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function stripMethodPrefix(method, prefixParts) {
+	const prefix = prefixParts.filter(Boolean).join(".");
+	if (prefix && method.startsWith(`${prefix}.`)) {
+		return method.slice(prefix.length + 1);
+	}
+	return method;
+}
+
+function doctypeMethodDisplayName(method, context) {
+	const doctypePrefix = [
+		context.app,
+		scrubDottedPathPart(context.module),
+		"doctype",
+		scrubDottedPathPart(context.doctype),
+	];
+	const relativeMethod = stripMethodPrefix(method, doctypePrefix);
+	const controllerFile = `${scrubDottedPathPart(context.doctype)}.`;
+	if (relativeMethod.startsWith(controllerFile)) {
+		return relativeMethod.slice(controllerFile.length);
+	}
+	return relativeMethod;
+}
+
+function methodDisplayName(method, context = {}) {
+	const methodPath = String(method || "");
+	if (!methodPath) {
+		return method;
+	}
+	if (context.doctype) {
+		return doctypeMethodDisplayName(methodPath, context);
+	}
+	if (context.module) {
+		return stripMethodPrefix(methodPath, [context.app, scrubDottedPathPart(context.module)]);
+	}
+	if (context.app) {
+		return stripMethodPrefix(methodPath, [context.app]);
+	}
+	return methodPath.split(".").pop() || method;
+}
+
 function normalizeInternalSpecUrl(url) {
 	const parsed = new URL(url, window.location.origin);
 	if (parsed.pathname === "/openapi.json" || parsed.pathname.startsWith("/openapi/")) {
@@ -178,7 +222,10 @@ function renderNavigationLink(documentEntry, sectionElement) {
 	link.dataset.key = documentEntry.key || (documentUrl ? keyForUrl(documentUrl) : "overview");
 	link.dataset.navEntry = "link";
 	link.dataset.level = documentEntry.level;
-	link.dataset.searchText = `${documentEntry.label} ${documentEntry.type || ""} ${documentEntry.keywords || ""}`;
+	link.dataset.searchText = `${documentEntry.label} ${documentEntry.type || ""} ${documentEntry.title || ""} ${documentEntry.keywords || ""}`;
+	if (documentEntry.title) {
+		link.title = documentEntry.title;
+	}
 	link.addEventListener("click", (event) => {
 		event.preventDefault();
 		if (documentEntry.kind === "overview") {
@@ -277,23 +324,24 @@ async function buildNavigation() {
 	].filter((section) => section.documents.length);
 }
 
-function renderMethodLinks(methods, sectionElement, level, keywords = "") {
+function renderMethodLinks(methods, sectionElement, level, keywords = "", context = {}) {
 	for (const [method, methodUrl] of sortedEntries(methods)) {
 		renderNavigationLink(
 			{
 				kind: "link",
-				label: method,
+				label: methodDisplayName(method, context),
 				type: "Whitelisted Method",
 				url: methodUrl,
 				level,
-				keywords,
+				keywords: `${keywords} ${method}`,
+				title: method,
 			},
 			sectionElement
 		);
 	}
 }
 
-function renderMethodGroup(label, methods, sectionElement, level, keywords = "") {
+function renderMethodGroup(label, methods, sectionElement, level, keywords = "", context = {}) {
 	if (!Object.keys(methods || {}).length) {
 		return null;
 	}
@@ -307,7 +355,7 @@ function renderMethodGroup(label, methods, sectionElement, level, keywords = "")
 		},
 		sectionElement
 	);
-	renderMethodLinks(methods, group, level + 1, keywords);
+	renderMethodLinks(methods, group, level + 1, keywords, context);
 	return group;
 }
 
@@ -335,7 +383,7 @@ async function loadAppDetails(group, app, appUrl) {
 		const documents = documentLinks(appIndex);
 		const modules = sortedEntries(documents.modules);
 		loading.remove();
-		renderMethodGroup("App methods", documents.methods, group, 1, app);
+		renderMethodGroup("App methods", documents.methods, group, 1, app, { app });
 		for (const [module, moduleUrl] of modules) {
 			renderLazyGroup(
 				{
@@ -372,7 +420,7 @@ async function loadModuleDetails(group, app, module, moduleUrl) {
 		const documents = documentLinks(moduleIndex);
 		const doctypes = sortedEntries(documents.doctypes);
 		loading.remove();
-		renderMethodGroup("Module methods", documents.methods, group, 2, `${app} ${module}`);
+		renderMethodGroup("Module methods", documents.methods, group, 2, `${app} ${module}`, { app, module });
 		for (const [doctype, doctypeDocument] of doctypes) {
 			const doctypeUrl = getDocTypeUrl(doctypeDocument);
 			const fileMethods = getDocTypeFileMethods(doctypeDocument);
@@ -389,6 +437,8 @@ async function loadModuleDetails(group, app, module, moduleUrl) {
 				(doctypeGroup) => {
 					loadDocTypeDetails(
 						doctypeGroup,
+						app,
+						module,
 						doctype,
 						doctypeUrl,
 						fileMethods
@@ -410,7 +460,7 @@ async function loadModuleDetails(group, app, module, moduleUrl) {
 	}
 }
 
-async function loadDocTypeDetails(group, doctype, doctypeUrl, moduleFileMethods) {
+async function loadDocTypeDetails(group, app, module, doctype, doctypeUrl, moduleFileMethods) {
 	group.dataset.loading = "true";
 	setGroupLoading(group, true);
 	clearLazyContent(group);
@@ -421,7 +471,7 @@ async function loadDocTypeDetails(group, doctype, doctypeUrl, moduleFileMethods)
 		const controllerMethods = doctypeIndex["x-frappe-doc-methods"] || [];
 		loading.remove();
 		renderStatus(group, docTypeDetailSummary(controllerMethods, fileMethods), 3);
-		renderMethodGroup("File-level methods", fileMethods, group, 3, doctype);
+		renderMethodLinks(fileMethods, group, 3, doctype, { app, module, doctype });
 		group.dataset.loaded = "true";
 		refreshActiveFilter();
 	} catch (error) {
@@ -516,6 +566,13 @@ function searchResultMetadata(item) {
 	return [item.type, item.app, item.module, item.doctype].filter(Boolean).join(" · ");
 }
 
+function searchResultLabel(item) {
+	if (item.method) {
+		return methodDisplayName(item.method, item);
+	}
+	return item.label;
+}
+
 function searchResultKey(item) {
 	if (item.type === "Controller Method" && item.method) {
 		return `${keyForUrl(item.url)}#controller:${item.method}`;
@@ -536,6 +593,9 @@ function renderSearchResults(results) {
 		link.className = "frappe-openapi-search-result";
 		link.href = itemUrl;
 		link.dataset.key = searchResultKey(item);
+		if (item.method) {
+			link.title = item.method;
+		}
 		link.addEventListener("click", (event) => {
 			event.preventDefault();
 			loadSpec(itemUrl, link.dataset.key);
@@ -543,7 +603,7 @@ function renderSearchResults(results) {
 
 		const label = document.createElement("span");
 		label.className = "frappe-openapi-nav-label";
-		label.textContent = item.label;
+		label.textContent = searchResultLabel(item);
 
 		const metadata = document.createElement("span");
 		metadata.className = "frappe-openapi-nav-type";
