@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="x-frappe-csrf-token" content="{{ csrf_token | e }}">
+	<title>Frappe OpenAPI</title>
+	<link rel="stylesheet" href="/swagger-ui-assets/swagger-ui.css">
+	<link rel="stylesheet" href="/swagger/assets/swagger.css">
+</head>
+<body>
+	<div id="frappe-openapi-page">
+		<aside id="frappe-openapi-nav" aria-labelledby="frappe-openapi-nav-title">
+			<h1 id="frappe-openapi-nav-title">Frappe OpenAPI</h1>
+			<p>Choose a document to view its operations in Swagger UI.</p>
+			<div id="frappe-openapi-nav-error"></div>
+			<label class="frappe-openapi-visually-hidden" for="frappe-openapi-filter">Filter OpenAPI documents</label>
+			<input id="frappe-openapi-filter" type="search" placeholder="Filter documents" autocomplete="off" spellcheck="false">
+			<div class="frappe-openapi-filter-help">Search all apps, modules, DocTypes, and methods without expanding sections.</div>
+			<div id="frappe-openapi-filter-status" class="frappe-openapi-filter-status" aria-live="polite" hidden></div>
+			<div id="frappe-openapi-nav-sections" aria-label="OpenAPI document groups"></div>
+		</aside>
+		<main id="frappe-openapi-main">
+			<section id="frappe-openapi-overview">
+				<h2>Explore your Frappe API</h2>
+				<p>
+					Select a document from the sidebar to view its endpoints, schemas, and request options.
+				</p>
+				<div class="frappe-openapi-overview-card">
+					<h3>How to use this page</h3>
+					<ul>
+						<li>Open Generic API v2 for standard CRUD endpoints.</li>
+						<li>Expand an app to load its methods, modules, and DocTypes.</li>
+						<li>Use the filter to search all indexed documents while keeping browsing lazy.</li>
+					</ul>
+				</div>
+			</section>
+			<div id="swagger-ui"></div>
+		</main>
+	</div>
+	<script src="/swagger-ui-assets/swagger-ui-bundle.js"></script>
+	<script src="/swagger-ui-assets/swagger-ui-standalone-preset.js"></script>
+	<script src="/swagger/assets/swagger.js"></script>
+</body>
+</html>

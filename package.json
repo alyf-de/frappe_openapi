@@ -1,0 +1,11 @@
+{
+  "name": "frappe_openapi",
+  "private": true,
+  "description": "Dynamic OpenAPI spec and Swagger UI for Frappe Framework apps",
+  "dependencies": {
+    "swagger-ui-dist": "^5.32.6"
+  },
+  "scarfSettings": {
+    "enabled": false
+  }
+}

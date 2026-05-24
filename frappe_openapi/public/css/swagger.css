@@ -1,0 +1,449 @@
+html {
+	box-sizing: border-box;
+	overflow-y: scroll;
+}
+
+*, *::before, *::after {
+	box-sizing: inherit;
+}
+
+:root {
+	--openapi-bg: #f7f7f7;
+	--openapi-surface: #ffffff;
+	--openapi-surface-muted: #f3f3f3;
+	--openapi-border: #e5e5e5;
+	--openapi-border-strong: #d1d5db;
+	--openapi-text: #171717;
+	--openapi-muted: #6b7280;
+	--openapi-soft: #9ca3af;
+	--openapi-accent: #111111;
+	--openapi-accent-soft: #eeeeee;
+	--openapi-danger: #b42318;
+	--openapi-danger-soft: #fef3f2;
+	--openapi-focus: #111111;
+	--openapi-radius-sm: 6px;
+	--openapi-radius-lg: 10px;
+}
+
+body {
+	margin: 0;
+	background: var(--openapi-bg);
+	color: var(--openapi-text);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+.swagger-ui .topbar {
+	display: none;
+}
+
+.frappe-openapi-visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+
+:where(a, input, summary, button):focus-visible {
+	outline: 2px solid var(--openapi-focus);
+	outline-offset: 3px;
+}
+
+#frappe-openapi-page {
+	display: flex;
+	min-height: 100vh;
+}
+
+#frappe-openapi-nav {
+	position: sticky;
+	top: 0;
+	width: 320px;
+	height: 100vh;
+	flex: 0 0 320px;
+	overflow-y: auto;
+	border-right: 1px solid var(--openapi-border);
+	background: var(--openapi-surface);
+	padding: 20px;
+	scrollbar-color: var(--openapi-border-strong) transparent;
+}
+
+#frappe-openapi-nav h1 {
+	margin: 0 0 6px;
+	font-size: 20px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	line-height: 1.25;
+}
+
+#frappe-openapi-nav p {
+	margin: 0 0 18px;
+	color: var(--openapi-muted);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+#frappe-openapi-filter {
+	width: 100%;
+	margin-bottom: 8px;
+	border: 1px solid var(--openapi-border-strong);
+	border-radius: var(--openapi-radius-sm);
+	background: var(--openapi-surface);
+	color: var(--openapi-text);
+	font: inherit;
+	padding: 8px 10px;
+	transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+#frappe-openapi-filter::placeholder {
+	color: var(--openapi-soft);
+}
+
+#frappe-openapi-filter:hover {
+	background: var(--openapi-surface);
+	border-color: var(--openapi-accent);
+}
+
+#frappe-openapi-filter:focus {
+	background: var(--openapi-surface);
+	border-color: var(--openapi-accent);
+	box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.08);
+	outline: none;
+}
+
+.frappe-openapi-filter-help {
+	margin: 0 0 6px;
+	color: var(--openapi-muted);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.frappe-openapi-filter-status {
+	margin: 0 0 14px;
+	border-radius: var(--openapi-radius-sm);
+	background: var(--openapi-accent-soft);
+	color: var(--openapi-text);
+	font-size: 12px;
+	line-height: 1.4;
+	padding: 8px 10px;
+}
+
+.frappe-openapi-nav-section {
+	margin: 0 0 18px;
+}
+
+.frappe-openapi-nav-section[open] {
+	margin-bottom: 20px;
+}
+
+.frappe-openapi-nav-section > summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 8px;
+	color: var(--openapi-muted);
+	cursor: pointer;
+	font-size: 11px;
+	font-weight: 700;
+	list-style: none;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+}
+
+.frappe-openapi-nav-section > summary::-webkit-details-marker,
+.frappe-openapi-nav-group > summary::-webkit-details-marker {
+	display: none;
+}
+
+.frappe-openapi-nav-section > summary::before,
+.frappe-openapi-nav-group > summary::before {
+	width: 6px;
+	height: 6px;
+	flex: 0 0 6px;
+	border-right: 1.5px solid currentColor;
+	border-bottom: 1.5px solid currentColor;
+	content: "";
+	transform: rotate(-45deg);
+	transition: transform 160ms ease;
+}
+
+.frappe-openapi-nav-section[open] > summary::before,
+.frappe-openapi-nav-group[open] > summary::before {
+	transform: rotate(45deg);
+}
+
+.frappe-openapi-nav-group {
+	margin: 2px 0;
+}
+
+.frappe-openapi-nav-group > summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	border-radius: var(--openapi-radius-sm);
+	color: var(--openapi-text);
+	cursor: pointer;
+	font: inherit;
+	list-style: none;
+	padding: 8px 10px;
+	transition: background 160ms ease, color 160ms ease;
+}
+
+.frappe-openapi-nav-group > summary:hover {
+	background: var(--openapi-surface-muted);
+	color: var(--openapi-text);
+}
+
+.frappe-openapi-nav-group > summary .frappe-openapi-nav-label {
+	flex: 1 1 auto;
+}
+
+.frappe-openapi-nav-group > summary .frappe-openapi-nav-type {
+	flex: 0 0 auto;
+	margin-top: 0;
+	border-radius: 999px;
+	background: var(--openapi-surface-muted);
+	color: var(--openapi-muted);
+	font-size: 10px;
+	font-weight: 700;
+	padding: 2px 6px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.frappe-openapi-nav-group.level-1 > summary {
+	padding-left: 22px;
+}
+
+.frappe-openapi-nav-group.level-2 > summary {
+	padding-left: 36px;
+}
+
+.frappe-openapi-nav-group.level-3 > summary {
+	padding-left: 50px;
+}
+
+.frappe-openapi-nav-group.level-4 > summary {
+	padding-left: 64px;
+}
+
+.frappe-openapi-nav-group.is-loading > summary {
+	color: var(--openapi-soft);
+}
+
+.frappe-openapi-nav-link,
+.frappe-openapi-search-result {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	width: 100%;
+	margin: 2px 0;
+	border: 0;
+	border-radius: var(--openapi-radius-sm);
+	background: transparent;
+	color: var(--openapi-text);
+	cursor: pointer;
+	font: inherit;
+	padding: 8px 10px;
+	text-align: left;
+	text-decoration: none;
+	transition: background 160ms ease, color 160ms ease;
+}
+
+.frappe-openapi-nav-link:hover,
+.frappe-openapi-search-result:hover {
+	background: var(--openapi-surface-muted);
+	color: var(--openapi-text);
+}
+
+.frappe-openapi-nav-link.active,
+.frappe-openapi-nav-summary-link.active,
+.frappe-openapi-search-result.active {
+	background: var(--openapi-accent-soft);
+	color: var(--openapi-text);
+	font-weight: 650;
+}
+
+.frappe-openapi-nav-link.level-1 {
+	padding-left: 22px;
+}
+
+.frappe-openapi-nav-link.level-2 {
+	padding-left: 36px;
+}
+
+.frappe-openapi-nav-link.level-3 {
+	padding-left: 50px;
+}
+
+.frappe-openapi-nav-link.level-4 {
+	padding-left: 64px;
+}
+
+.frappe-openapi-search-results {
+	margin: 0 0 14px;
+	border-bottom: 1px solid var(--openapi-border);
+	padding-bottom: 12px;
+}
+
+.frappe-openapi-nav-status {
+	margin: 3px 0;
+	color: var(--openapi-muted);
+	font-size: 12px;
+	line-height: 1.4;
+	padding: 7px 10px;
+}
+
+.frappe-openapi-nav-status.level-1 {
+	padding-left: 22px;
+}
+
+.frappe-openapi-nav-status.level-2 {
+	padding-left: 36px;
+}
+
+.frappe-openapi-nav-status.level-3 {
+	padding-left: 50px;
+}
+
+.frappe-openapi-nav-status.level-4 {
+	padding-left: 64px;
+}
+
+.frappe-openapi-nav-status.error {
+	color: var(--openapi-danger);
+}
+
+#frappe-openapi-nav-error {
+	display: none;
+	margin-bottom: 16px;
+	border: 1px solid rgba(155, 48, 45, 0.24);
+	border-radius: var(--openapi-radius-sm);
+	background: var(--openapi-danger-soft);
+	color: var(--openapi-danger);
+	font-size: 13px;
+	padding: 10px 12px;
+}
+
+.frappe-openapi-nav-label {
+	display: block;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.frappe-openapi-nav-type {
+	display: block;
+	margin-top: 1px;
+	color: var(--openapi-muted);
+	font-size: 11px;
+	font-weight: 500;
+}
+
+#frappe-openapi-main {
+	min-width: 0;
+	flex: 1;
+}
+
+#frappe-openapi-overview {
+	max-width: 960px;
+	margin: 0 auto;
+	padding: 48px 40px;
+}
+
+#frappe-openapi-overview h2 {
+	max-width: 720px;
+	margin: 0 0 12px;
+	font-size: 32px;
+	font-weight: 600;
+	letter-spacing: -0.03em;
+	line-height: 1.2;
+}
+
+#frappe-openapi-overview p {
+	max-width: 660px;
+	margin: 0 0 18px;
+	color: var(--openapi-muted);
+	font-size: 15px;
+	line-height: 1.6;
+}
+
+.frappe-openapi-overview-card {
+	max-width: 720px;
+	margin-top: 24px;
+	border: 1px solid var(--openapi-border);
+	border-radius: var(--openapi-radius-lg);
+	background: var(--openapi-surface);
+	padding: 20px;
+}
+
+.frappe-openapi-overview-card h3 {
+	margin: 0 0 12px;
+	font-size: 18px;
+	letter-spacing: -0.02em;
+}
+
+.frappe-openapi-overview-card ul {
+	margin: 0;
+	padding-left: 20px;
+	color: var(--openapi-muted);
+	line-height: 1.6;
+}
+
+.frappe-openapi-overview-card li + li {
+	margin-top: 8px;
+}
+
+.swagger-ui {
+	color: var(--openapi-text);
+	font-family: inherit;
+}
+
+.swagger-ui .scheme-container,
+.swagger-ui .information-container.wrapper {
+	background: transparent;
+	box-shadow: none;
+}
+
+.swagger-ui .wrapper {
+	max-width: 1180px;
+	padding-right: clamp(20px, 4vw, 48px);
+	padding-left: clamp(20px, 4vw, 48px);
+}
+
+.swagger-ui .opblock-tag,
+.swagger-ui .info .title {
+	color: var(--openapi-text);
+}
+
+@media (max-width: 900px) {
+	#frappe-openapi-page {
+		display: block;
+	}
+
+	#frappe-openapi-nav {
+		position: static;
+		width: auto;
+		height: auto;
+		border-right: 0;
+		border-bottom: 1px solid var(--openapi-border);
+		padding: 20px;
+	}
+}
+
+@media (max-width: 560px) {
+	#frappe-openapi-overview {
+		padding: 40px 20px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after {
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+	}
+}

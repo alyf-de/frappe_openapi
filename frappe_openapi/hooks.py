@@ -53,6 +53,11 @@ app_license = "mit"
 # include app icons in desk
 # app_include_icons = "frappe_openapi/public/icons.svg"
 
+# Website
+# ------------------
+
+page_renderer = ["frappe_openapi.renderer.OpenAPIRenderer"]
+
 # Home Pages
 # ----------
 
