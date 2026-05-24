@@ -18,6 +18,21 @@ After installing the app, open Swagger UI at `/swagger`.
 
 The OpenAPI JSON is available at `/openapi.json`.
 
+### User profiles
+
+Frappe OpenAPI supports a few different ways people need to consume API documentation:
+
+- App developers generating a spec for their own app need a stable app-level spec they can ship with their app, publish in their docs, or feed into SDK tooling.
+- Organizations hosting public specs for all installed Frappe apps need a browsable catalog that can expose app, module, **DocType**, and method documentation without requiring access to private site data.
+- Organizations hosting internal specs for a specific site need site-aware documentation that includes Custom Fields and Property Setters, but is protected like any other internal system documentation.
+- Developers browsing someone else's hosted spec need a fast Swagger UI entry point for understanding available resources, fields, and whitelisted methods.
+- Developers using someone else's hosted spec with a code generator need a bundled, deterministic OpenAPI document rather than a lazy, multi-document browsing tree.
+
+These profiles imply two complementary outputs:
+
+- Dynamic `/swagger` and `/openapi/...` endpoints for interactive exploration of the current site.
+- Generated, bundled app or site specs for SDK generators, publishing, and CI contract checks.
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
