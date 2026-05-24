@@ -19,7 +19,7 @@ from frappe_openapi.refs import (
 	generated_site_document_path,
 	unquote_segment,
 )
-from frappe_openapi.registry import get_doctype_names, get_installed_apps, get_whitelisted_methods
+from frappe_openapi.registry import get_doctype_names, get_installed_apps, get_whitelisted_method_records
 from frappe_openapi.schema import build_schema_document
 from frappe_openapi.storage import write_app_bundle, write_manifest
 
@@ -56,7 +56,12 @@ def build_app_bundle(app: str, generated_at: str | None = None) -> dict:
 	validate_apps([app])
 	generated_at = generated_at or now_utc()
 	doctypes = get_doctype_names(app=app)
-	methods = get_whitelisted_methods(app=app)
+	methods = get_whitelisted_method_records(app=app)
+	standalone_methods = [
+		method["name"]
+		for method in methods
+		if method.get("kind") != "doctype"
+	]
 	paths = {}
 	tags = set()
 	schema_queue = list(doctypes)
@@ -67,7 +72,7 @@ def build_app_bundle(app: str, generated_at: str | None = None) -> dict:
 		paths.update(rewrite_schema_refs(doctype_spec.get("paths", {})))
 		collect_tags(doctype_spec.get("paths", {}), tags)
 
-	for method in methods:
+	for method in standalone_methods:
 		method_spec = build_method_spec(method)
 		collect_schema_doctypes(method_spec.get("paths", {}), schema_queue)
 		paths.update(rewrite_schema_refs(method_spec.get("paths", {})))
@@ -91,7 +96,8 @@ def build_app_bundle(app: str, generated_at: str | None = None) -> dict:
 			"x-frappe-generated-at": generated_at,
 			"x-frappe-generated-source": "frappe_openapi.generator.build_app_bundle",
 			"x-frappe-doctypes": doctypes,
-			"x-frappe-methods": methods,
+			"x-frappe-methods": [method["name"] for method in methods],
+			"x-frappe-standalone-methods": standalone_methods,
 		},
 	)
 

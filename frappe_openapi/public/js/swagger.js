@@ -370,7 +370,7 @@ function getDocTypeFileMethods(doctypeDocument) {
 	if (typeof doctypeDocument === "string") {
 		return {};
 	}
-	return doctypeDocument.methods || {};
+	return doctypeDocument.file_methods || doctypeDocument.methods || {};
 }
 
 async function loadAppDetails(group, app, appUrl) {
@@ -471,7 +471,6 @@ async function loadDocTypeDetails(group, app, module, doctype, doctypeUrl, modul
 		const controllerMethods = doctypeIndex["x-frappe-doc-methods"] || [];
 		loading.remove();
 		renderStatus(group, docTypeDetailSummary(controllerMethods, fileMethods), 3);
-		renderMethodLinks(fileMethods, group, 3, doctype, { app, module, doctype });
 		group.dataset.loaded = "true";
 		refreshActiveFilter();
 	} catch (error) {

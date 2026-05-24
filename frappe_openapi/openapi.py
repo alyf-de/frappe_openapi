@@ -43,6 +43,12 @@ from frappe_openapi.settings import has_openapi_spec_access, require_openapi_spe
 from frappe_openapi.storage import read_app_bundle, read_manifest
 
 SPEC_CACHE_TTL = 300
+DOCTYPE_OPERATION_GROUPS = {
+	"crud": "CRUD",
+	"standard": "Standard RPC",
+	"controller": "Controller RPC",
+	"file": "File-level RPC",
+}
 
 
 def get_document(path: str) -> dict:
@@ -365,17 +371,7 @@ def build_module_spec(app: str, module: str) -> dict:
 			"x-frappe-openapi-documents": {
 				"methods": method_document_map(methods),
 				"doctypes": {
-					doctype: {
-						"url": doctype_document_path(doctype),
-						"methods": method_document_map(
-							get_whitelisted_methods(
-								app=app,
-								module=module,
-								doctype=doctype,
-								kind="doctype",
-							)
-						),
-					}
+					doctype: doctype_document_entry(app, module, doctype)
 					for doctype in doctypes
 				}
 			},
@@ -394,16 +390,17 @@ def build_doctype_spec(doctype: str) -> dict:
 	meta_path = f"/api/v2/doctype/{doctype}/meta"
 	count_path = f"/api/v2/doctype/{doctype}/count"
 	doc_methods = get_doctype_whitelisted_methods(doctype)
-	file_methods = get_whitelisted_methods(app=app, module=meta.module, doctype=doctype, kind="doctype")
+	file_methods = get_whitelisted_method_records(app=app, module=meta.module, doctype=doctype, kind="doctype")
 	paths = {
-		collection_path: build_collection_path_item(doctype),
-		name_path: build_document_path_item(doctype),
-		copy_path: build_copy_path_item(doctype),
-		method_path: build_doc_method_path_item(doctype),
-		meta_path: build_meta_path_item(doctype),
-		count_path: build_count_path_item(doctype),
+		collection_path: with_doctype_operation_group(build_collection_path_item(doctype), "crud"),
+		name_path: with_doctype_operation_group(build_document_path_item(doctype), "crud"),
+		copy_path: with_doctype_operation_group(build_copy_path_item(doctype), "standard"),
+		method_path: with_doctype_operation_group(build_doc_method_path_item(doctype), "controller"),
+		meta_path: with_doctype_operation_group(build_meta_path_item(doctype), "standard"),
+		count_path: with_doctype_operation_group(build_count_path_item(doctype), "standard"),
 	}
 	paths.update(build_doc_controller_method_paths(doctype, doc_methods, name_path))
+	paths.update(build_doctype_file_method_paths(doctype, file_methods))
 
 	return with_base_openapi_fields(
 		doctype_document_path(doctype),
@@ -412,14 +409,15 @@ def build_doctype_spec(doctype: str) -> dict:
 			"paths": paths,
 			"components": {"securitySchemes": build_security_schemes()},
 			"security": default_security_requirements(),
-			"tags": [{"name": doctype}],
+			"tags": doctype_operation_tags(doctype),
 			"x-frappe-app": app,
 			"x-frappe-module": meta.module,
 			"x-frappe-doctype": doctype,
 			"x-frappe-schema": schema_document_path(doctype),
 			"x-frappe-doc-methods": [serialize_doc_method(method) for method in doc_methods],
+			"x-frappe-file-methods": [serialize_file_method(method, doctype) for method in file_methods],
 			"x-frappe-openapi-documents": {
-				"file_methods": method_document_map(file_methods),
+				"file_methods": included_method_document_map(file_methods, doctype_document_path(doctype)),
 			},
 		},
 	)
@@ -555,6 +553,22 @@ def method_document_map(methods: list[str]) -> dict:
 	}
 
 
+def included_method_document_map(methods: list[dict], document_path: str) -> dict:
+	return {
+		method["name"]: document_path
+		for method in methods
+	}
+
+
+def doctype_document_entry(app: str, module: str, doctype: str) -> dict:
+	doctype_url = doctype_document_path(doctype)
+	file_methods = get_whitelisted_method_records(app=app, module=module, doctype=doctype, kind="doctype")
+	return {
+		"url": doctype_url,
+		"file_methods": included_method_document_map(file_methods, doctype_url),
+	}
+
+
 @redis_cache(ttl=SPEC_CACHE_TTL)
 def build_search_index() -> dict:
 	items = []
@@ -616,11 +630,16 @@ def build_search_index() -> dict:
 			"module": "Module Method",
 			"doctype": "File Method",
 		}.get(method.get("kind"), "Whitelisted Method")
+		method_url = (
+			doctype_document_path(method["doctype"])
+			if method.get("kind") == "doctype" and method.get("doctype")
+			else method_document_path(method["name"])
+		)
 		items.append(
 			search_index_item(
 				method["name"],
 				method_type,
-				method_document_path(method["name"]),
+				method_url,
 				app=method.get("app"),
 				module=method.get("module"),
 				doctype=method.get("doctype"),
@@ -772,11 +791,39 @@ def build_doc_method_path_item(doctype: str) -> dict:
 
 def build_doc_controller_method_paths(doctype: str, doc_methods: list[dict], name_path: str) -> dict:
 	return {
-		f"{name_path}/method/{quote_segment(method['name'])}/": build_doc_controller_method_path_item(
-			doctype, method
+		f"{name_path}/method/{quote_segment(method['name'])}/": with_doctype_operation_group(
+			build_doc_controller_method_path_item(doctype, method), "controller"
 		)
 		for method in doc_methods
 	}
+
+
+def build_doctype_file_method_paths(doctype: str, file_methods: list[dict]) -> dict:
+	return {
+		f"/api/v2/method/{method['name']}": build_doctype_file_method_path_item(doctype, method)
+		for method in file_methods
+	}
+
+
+def build_doctype_file_method_path_item(doctype: str, method: dict) -> dict:
+	resolved_method = frappe.override_whitelisted_method(method["name"])
+	method_obj = frappe.get_attr(resolved_method)
+	path_item = {}
+	for http_method in method["http_methods"]:
+		operation = build_method_operation(
+			method["name"],
+			method_obj,
+			http_method,
+			allow_guest=method.get("allow_guest", False),
+		)
+		operation.update({
+			"tags": [doctype_operation_tag("file")],
+			"x-frappe-operation-group": "file",
+			"x-frappe-file-method": method["name"],
+		})
+		path_item[http_method.lower()] = operation
+
+	return path_item
 
 
 def build_doc_controller_method_path_item(doctype: str, method: dict) -> dict:
@@ -794,6 +841,38 @@ def serialize_doc_method(method: dict) -> dict:
 		"http_methods": method["http_methods"],
 		"allow_guest": method.get("allow_guest", False),
 	}
+
+
+def serialize_file_method(method: dict, doctype: str) -> dict:
+	return {
+		"name": method["name"],
+		"http_methods": method["http_methods"],
+		"allow_guest": method.get("allow_guest", False),
+		"included_in": doctype_document_path(doctype),
+	}
+
+
+def doctype_operation_tags(doctype: str) -> list[dict]:
+	return [
+		{
+			"name": doctype_operation_tag(group),
+			"description": f"{label} operations for {doctype}.",
+			"x-frappe-operation-group": group,
+		}
+		for group, label in DOCTYPE_OPERATION_GROUPS.items()
+	]
+
+
+def doctype_operation_tag(group: str) -> str:
+	return DOCTYPE_OPERATION_GROUPS[group]
+
+
+def with_doctype_operation_group(path_item: dict, group: str) -> dict:
+	for operation in path_item.values():
+		if isinstance(operation, dict):
+			operation["tags"] = [doctype_operation_tag(group)]
+			operation["x-frappe-operation-group"] = group
+	return path_item
 
 
 def build_meta_path_item(doctype: str) -> dict:

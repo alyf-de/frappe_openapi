@@ -73,7 +73,10 @@ class TestGeneratedOpenAPISpecs(TestCase):
 		with (
 			patch("frappe_openapi.generator.get_installed_apps", return_value=["frappe_openapi"]),
 			patch("frappe_openapi.generator.get_doctype_names", return_value=["ToDo"]),
-			patch("frappe_openapi.generator.get_whitelisted_methods", return_value=["frappe_openapi.ping"]),
+			patch(
+				"frappe_openapi.generator.get_whitelisted_method_records",
+				return_value=[{"name": "frappe_openapi.ping", "kind": "app"}],
+			),
 			patch("frappe_openapi.generator.build_doctype_spec", return_value=doctype_spec),
 			patch("frappe_openapi.generator.build_method_spec", return_value=method_spec),
 			patch(
@@ -98,4 +101,40 @@ class TestGeneratedOpenAPISpecs(TestCase):
 		self.assertEqual(bundle["x-frappe-generated-at"], "2026-05-24T20:00:00Z")
 		self.assertEqual(bundle["x-frappe-doctypes"], ["ToDo"])
 		self.assertEqual(bundle["x-frappe-methods"], ["frappe_openapi.ping"])
+		self.assertEqual(bundle["x-frappe-standalone-methods"], ["frappe_openapi.ping"])
 		self.assertEqual(bundle["tags"], [{"name": "Methods"}, {"name": "ToDo"}])
+
+	def test_build_app_bundle_does_not_overwrite_embedded_doctype_file_methods(self):
+		doctype_method = "frappe_openapi.desk.doctype.todo.todo.file_method"
+		doctype_spec = {
+			"paths": {
+				f"/api/v2/method/{doctype_method}": {
+					"post": {
+						"tags": ["ToDo File-level RPC"],
+						"x-frappe-operation-group": "file",
+						"responses": {"200": {"description": "OK"}},
+					}
+				}
+			}
+		}
+
+		with (
+			patch("frappe_openapi.generator.get_installed_apps", return_value=["frappe_openapi"]),
+			patch("frappe_openapi.generator.get_doctype_names", return_value=["ToDo"]),
+			patch(
+				"frappe_openapi.generator.get_whitelisted_method_records",
+				return_value=[{"name": doctype_method, "kind": "doctype"}],
+			),
+			patch("frappe_openapi.generator.build_doctype_spec", return_value=doctype_spec),
+			patch("frappe_openapi.generator.build_method_spec") as build_method_spec,
+			patch("frappe_openapi.generator.build_component_schemas", return_value={}),
+			patch("frappe_openapi.openapi.absolute_url", side_effect=lambda path: path),
+			patch("frappe_openapi.openapi.get_spec_version", return_value="frappe_openapi:1.0.0"),
+		):
+			bundle = build_app_bundle("frappe_openapi", generated_at="2026-05-24T20:00:00Z")
+
+		build_method_spec.assert_not_called()
+		operation = bundle["paths"][f"/api/v2/method/{doctype_method}"]["post"]
+		self.assertEqual(operation["x-frappe-operation-group"], "file")
+		self.assertEqual(bundle["x-frappe-methods"], [doctype_method])
+		self.assertEqual(bundle["x-frappe-standalone-methods"], [])
