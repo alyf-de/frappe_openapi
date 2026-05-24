@@ -58,7 +58,10 @@ class OpenAPIRenderer(BaseRenderer):
 
 		response = Response(frappe.as_json(document), mimetype="application/json")
 		response.headers["X-Page-Name"] = self.path
-		response.headers["Cache-Control"] = "no-store" if frappe._dev_server else "public, max-age=300"
+		if path.startswith("openapi/generated/"):
+			response.headers["Cache-Control"] = "no-store" if frappe._dev_server else "private, max-age=300"
+		else:
+			response.headers["Cache-Control"] = "no-store" if frappe._dev_server else "public, max-age=300"
 		return response
 
 	def render_swagger(self):

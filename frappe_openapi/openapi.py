@@ -39,6 +39,7 @@ from frappe_openapi.schema import (
 	frappe_datetime_schema,
 	python_type_to_schema,
 )
+from frappe_openapi.storage import read_app_bundle, read_manifest
 
 SPEC_CACHE_TTL = 300
 
@@ -53,6 +54,14 @@ def get_document(path: str) -> dict:
 		return build_methods_index_spec()
 	if path == "openapi/search-index.json":
 		return build_search_index()
+	if path == "openapi/generated/manifest.json":
+		require_generated_openapi_access()
+		return read_manifest()
+
+	if path.startswith("openapi/generated/apps/") and path.endswith(".json"):
+		require_generated_openapi_access()
+		app = unquote_json_name(path.removeprefix("openapi/generated/apps/"))
+		return read_app_bundle(app)
 
 	if path.startswith("openapi/apps/") and path.endswith(".json"):
 		app = unquote_json_name(path.removeprefix("openapi/apps/"))
@@ -82,6 +91,27 @@ def get_document(path: str) -> dict:
 
 def unquote_json_name(value: str) -> str:
 	return unquote_segment(value.removesuffix(".json"))
+
+
+def require_generated_openapi_access() -> None:
+	if has_generated_openapi_access():
+		return
+
+	frappe.throw(
+		frappe._("Not permitted to access generated OpenAPI specs."),
+		frappe.PermissionError,
+	)
+
+
+def has_generated_openapi_access(user: str | None = None) -> bool:
+	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
+	if not user or user == "Guest":
+		return False
+
+	roles = set(frappe.get_roles(user))
+	return bool(roles.intersection({"System Manager", "Developer"}))
 
 
 @redis_cache(ttl=SPEC_CACHE_TTL)

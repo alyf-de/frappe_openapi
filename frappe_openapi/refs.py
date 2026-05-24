@@ -47,6 +47,18 @@ def method_document_path(method: str) -> str:
 	return f"/openapi/methods/{quote_segment(method)}.json"
 
 
+def generated_manifest_path() -> str:
+	return "/openapi/generated/manifest.json"
+
+
+def generated_app_document_path(app: str) -> str:
+	return f"/openapi/generated/apps/{quote_segment(app)}.json"
+
+
+def generated_site_document_path() -> str:
+	return "/openapi/generated/site.json"
+
+
 def auth_document_path() -> str:
 	return "/openapi/auth.json"
 
