@@ -1,0 +1,53 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-05-25 03:27:07.988718",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_swagger_ui",
+  "allow_spec_access_for"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enable_swagger_ui",
+   "fieldtype": "Check",
+   "label": "Enable Swagger UI"
+  },
+  {
+   "default": "System Manager",
+   "fieldname": "allow_spec_access_for",
+   "fieldtype": "Select",
+   "label": "Allow Spec Access For",
+   "options": "Nobody\nSystem Manager\nDesk User\nGuest"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-25 03:50:44.373586",
+ "modified_by": "Administrator",
+ "module": "Frappe OpenAPI",
+ "name": "OpenAPI Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

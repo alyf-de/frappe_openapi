@@ -7,7 +7,9 @@ from werkzeug.exceptions import NotFound
 from werkzeug.wrappers import Response
 
 from frappe_openapi.openapi import get_document
+from frappe_openapi.settings import is_openapi_spec_public, require_swagger_ui_access
 
+OPENAPI_HTTP_CACHE_MAX_AGE = 300
 SWAGGER_ASSET_PATH_PREFIX = "swagger-ui-assets/"
 SWAGGER_SHELL_ASSET_PATH_PREFIX = "swagger/assets/"
 SWAGGER_ASSET_NAMES = {
@@ -58,16 +60,15 @@ class OpenAPIRenderer(BaseRenderer):
 
 		response = Response(frappe.as_json(document), mimetype="application/json")
 		response.headers["X-Page-Name"] = self.path
-		if path.startswith("openapi/generated/"):
-			response.headers["Cache-Control"] = "no-store" if frappe._dev_server else "private, max-age=300"
-		else:
-			response.headers["Cache-Control"] = "no-store" if frappe._dev_server else "public, max-age=300"
+		response.headers["Cache-Control"] = get_openapi_cache_control()
 		return response
 
 	def render_swagger(self):
+		require_swagger_ui_access()
+
 		response = Response(build_swagger_html(), mimetype="text/html")
 		response.headers["X-Page-Name"] = self.path
-		response.headers["Cache-Control"] = "no-store" if frappe._dev_server else "public, max-age=300"
+		response.headers["Cache-Control"] = get_openapi_cache_control()
 		return response
 
 	def render_swagger_asset(self, asset_name: str):
@@ -105,6 +106,14 @@ def get_swagger_asset_dir() -> Path:
 
 def get_swagger_shell_asset_path(asset_name: str) -> Path:
 	return Path(frappe.get_app_path("frappe_openapi", *SWAGGER_SHELL_ASSETS[asset_name]))
+
+
+def get_openapi_cache_control() -> str:
+	if frappe._dev_server:
+		return "no-store"
+
+	visibility = "public" if is_openapi_spec_public() else "private"
+	return f"{visibility}, max-age={OPENAPI_HTTP_CACHE_MAX_AGE}"
 
 
 def build_swagger_html() -> str:
