@@ -8,9 +8,13 @@ const filterStatus = document.querySelector("#frappe-openapi-filter-status");
 
 const SEARCH_INDEX_URL = "/openapi/search-index.json";
 const GENERATED_MANIFEST_URL = "/openapi/generated/manifest.json";
+const SWAGGER_PATH = "/swagger";
+const SPEC_QUERY_PARAM = "spec";
+const OVERVIEW_KEY = "overview";
 const MAX_SEARCH_RESULTS = 50;
 const appIndexCache = new Map();
 const moduleIndexCache = new Map();
+const lazyGroupLoaders = new WeakMap();
 let searchIndexCache = null;
 let generatedManifestCache = null;
 let currentFilterQuery = "";
@@ -90,6 +94,40 @@ function normalizeInternalSpecUrl(url) {
 		return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 	}
 	return url;
+}
+
+function swaggerOverviewUrl() {
+	return SWAGGER_PATH;
+}
+
+function swaggerSpecUrl(url) {
+	const pageUrl = new URL(SWAGGER_PATH, window.location.origin);
+	pageUrl.searchParams.set(SPEC_QUERY_PARAM, normalizeInternalSpecUrl(url));
+	return `${pageUrl.pathname}${pageUrl.search}`;
+}
+
+function currentPageUrl() {
+	return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function updatePageHistory(state, url, options = {}) {
+	if (options.skipHistory) {
+		return;
+	}
+	const method = options.replace || currentPageUrl() === url ? "replaceState" : "pushState";
+	window.history[method](state, "", url);
+}
+
+function routeFromLocation(state = {}) {
+	const spec = new URLSearchParams(window.location.search).get(SPEC_QUERY_PARAM);
+	if (!spec) {
+		return { page: "overview" };
+	}
+	const normalizedSpec = normalizeInternalSpecUrl(spec);
+	const activeKey = state?.page === "spec" && state.spec === normalizedSpec
+		? state.activeKey
+		: keyForUrl(normalizedSpec);
+	return { page: "spec", spec: normalizedSpec, activeKey };
 }
 
 async function fetchSpec(url) {
@@ -209,8 +247,8 @@ function renderNavigationLink(documentEntry, sectionElement) {
 	const link = document.createElement("a");
 	const documentUrl = documentEntry.url ? normalizeInternalSpecUrl(documentEntry.url) : "";
 	link.className = `frappe-openapi-nav-link level-${documentEntry.level}`;
-	link.href = documentUrl || "#overview";
-	link.dataset.key = documentEntry.key || (documentUrl ? keyForUrl(documentUrl) : "overview");
+	link.href = documentUrl ? swaggerSpecUrl(documentUrl) : swaggerOverviewUrl();
+	link.dataset.key = documentEntry.key || (documentUrl ? keyForUrl(documentUrl) : OVERVIEW_KEY);
 	link.dataset.navEntry = "link";
 	link.dataset.level = documentEntry.level;
 	link.dataset.searchText = `${documentEntry.label} ${documentEntry.type || ""} ${documentEntry.title || ""} ${documentEntry.keywords || ""}`;
@@ -254,7 +292,17 @@ function renderLazyGroup(documentEntry, sectionElement, onOpen) {
 	const group = document.createElement("details");
 	group.className = `frappe-openapi-nav-group level-${documentEntry.level}`;
 	group.dataset.defaultOpen = "false";
+	if (documentEntry.app) {
+		group.dataset.navApp = documentEntry.app;
+	}
+	if (documentEntry.module) {
+		group.dataset.navModule = documentEntry.module;
+	}
+	if (documentEntry.url) {
+		group.dataset.navUrl = normalizeInternalSpecUrl(documentEntry.url);
+	}
 	group.appendChild(createSummary(documentEntry));
+	lazyGroupLoaders.set(group, onOpen);
 	group.addEventListener("toggle", () => {
 		if (group.open && !group.dataset.loaded && !group.dataset.loading) {
 			onOpen(group);
@@ -381,6 +429,9 @@ async function loadAppDetails(group, app, appUrl) {
 					label: module,
 					type: "Module",
 					level: 1,
+					app,
+					module,
+					url: moduleUrl,
 					keywords: `${app} module doctypes methods`,
 				},
 				group,
@@ -441,10 +492,15 @@ async function loadModuleDetails(group, app, module, moduleUrl) {
 	}
 }
 
-function showOverview() {
+function showOverview(options = {}) {
 	overview.hidden = false;
 	swagger.hidden = true;
-	setActiveKey("overview");
+	updatePageHistory({ page: "overview" }, swaggerOverviewUrl(), options);
+	setActiveKey(OVERVIEW_KEY);
+	const overviewLink = findNavigationEntryByKey(OVERVIEW_KEY);
+	if (overviewLink) {
+		revealNavigationEntry(overviewLink);
+	}
 }
 
 function showSwagger() {
@@ -474,12 +530,119 @@ function setActiveLink(url) {
 	setActiveKey(keyForUrl(url));
 }
 
-function loadSpec(url, activeKey = keyForUrl(url)) {
+function findNavigationEntryByKey(key) {
+	for (const link of document.querySelectorAll(
+		".frappe-openapi-nav-link, .frappe-openapi-nav-summary-link"
+	)) {
+		if (link.dataset.key === key) {
+			return link;
+		}
+	}
+	return null;
+}
+
+function revealNavigationEntry(entry) {
+	let parent = entry.parentElement;
+	while (parent) {
+		if (parent.classList?.contains("frappe-openapi-nav-group")
+			|| parent.classList?.contains("frappe-openapi-nav-section")) {
+			parent.open = true;
+		}
+		parent = parent.parentElement;
+	}
+}
+
+function findAppGroup(app) {
+	return Array.from(document.querySelectorAll(".frappe-openapi-nav-group"))
+		.find((group) => group.dataset.navApp === app && !group.dataset.navModule);
+}
+
+function findModuleGroup(app, module) {
+	return Array.from(document.querySelectorAll(".frappe-openapi-nav-group"))
+		.find((group) => group.dataset.navApp === app && group.dataset.navModule === module);
+}
+
+function waitForLazyGroup(group) {
+	if (!group.dataset.loading) {
+		return Promise.resolve();
+	}
+	return new Promise((resolve) => {
+		const observer = new MutationObserver(() => {
+			if (!group.dataset.loading) {
+				observer.disconnect();
+				resolve();
+			}
+		});
+		observer.observe(group, { attributes: true, attributeFilter: ["data-loading", "data-loaded"] });
+	});
+}
+
+async function ensureLazyGroupLoaded(group) {
+	if (!group) {
+		return;
+	}
+	if (group.dataset.loaded !== "true") {
+		const loader = lazyGroupLoaders.get(group);
+		if (loader && !group.dataset.loading) {
+			await loader(group);
+		} else {
+			await waitForLazyGroup(group);
+		}
+	}
+	group.open = true;
+}
+
+async function searchIndexItemForSpec(url) {
+	const targetKey = keyForUrl(url);
+	const index = await fetchSearchIndex();
+	const matches = searchIndexItems(index).filter((item) => item.url && keyForUrl(item.url) === targetKey);
+	return matches.find((item) => !item.method) || matches[0] || null;
+}
+
+async function ensureNavigationForSpec(url, activeKey = keyForUrl(url)) {
+	const specKey = keyForUrl(url);
+	const directEntry = findNavigationEntryByKey(activeKey) || findNavigationEntryByKey(specKey);
+	if (directEntry) {
+		revealNavigationEntry(directEntry);
+		setActiveKey(activeKey);
+		return;
+	}
+
+	let item = null;
+	try {
+		item = await searchIndexItemForSpec(url);
+	} catch {
+		setActiveKey(activeKey);
+		return;
+	}
+
+	if (item?.app) {
+		await ensureLazyGroupLoaded(findAppGroup(item.app));
+	}
+	if (item?.app && item?.module) {
+		await ensureLazyGroupLoaded(findModuleGroup(item.app, item.module));
+	}
+
+	const loadedEntry = findNavigationEntryByKey(activeKey) || findNavigationEntryByKey(specKey);
+	if (loadedEntry) {
+		revealNavigationEntry(loadedEntry);
+	}
+	setActiveKey(activeKey);
+}
+
+function loadSpec(url, activeKey = keyForUrl(url), options = {}) {
 	url = normalizeInternalSpecUrl(url);
+	const currentActiveKey = activeKey || keyForUrl(url);
 	showSwagger();
+	updatePageHistory(
+		{ page: "spec", spec: url, activeKey: currentActiveKey },
+		swaggerSpecUrl(url),
+		options
+	);
 	window.ui.specActions.updateUrl(url);
 	window.ui.specActions.download(url);
-	setActiveKey(activeKey);
+	setActiveKey(currentActiveKey);
+	return ensureNavigationForSpec(url, currentActiveKey);
 }
 
 function searchIndexItems(index) {
@@ -533,7 +696,7 @@ function renderSearchResults(results) {
 		const link = document.createElement("a");
 		const itemUrl = normalizeInternalSpecUrl(item.url);
 		link.className = "frappe-openapi-search-result";
-		link.href = itemUrl;
+		link.href = swaggerSpecUrl(itemUrl);
 		link.dataset.key = searchResultKey(item);
 		if (item.method) {
 			link.title = item.method;
@@ -686,7 +849,16 @@ function initializeSwagger() {
 	});
 }
 
-function renderNavigation(sections) {
+function loadPageFromLocation(options = {}) {
+	const route = routeFromLocation(options.state);
+	if (route.page === "spec") {
+		return loadSpec(route.spec, route.activeKey, { skipHistory: true });
+	}
+	showOverview({ skipHistory: true });
+	return Promise.resolve();
+}
+
+async function renderNavigation(sections) {
 	navSections.textContent = "";
 	navSections.setAttribute("aria-busy", "false");
 	for (const section of sections) {
@@ -711,12 +883,16 @@ function renderNavigation(sections) {
 		navSections.appendChild(sectionElement);
 	}
 
-	showOverview();
+	await loadPageFromLocation();
 }
 
 filterInput.addEventListener("input", (event) => {
 	const query = event.target.value.trim().toLowerCase();
 	handleFilterInput(query);
+});
+
+window.addEventListener("popstate", (event) => {
+	loadPageFromLocation({ state: event.state });
 });
 
 initializeSwagger();
