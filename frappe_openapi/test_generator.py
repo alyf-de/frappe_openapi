@@ -88,7 +88,7 @@ class TestGeneratedOpenAPISpecs(TestCase):
 
 		with (
 			patch("frappe_openapi.generator.get_installed_apps", return_value=["frappe_openapi"]),
-			patch("frappe_openapi.generator.get_doctype_names", return_value=["ToDo"]),
+			patch("frappe_openapi.generator.get_doctype_names", return_value=["ToDo"]) as get_doctype_names,
 			patch(
 				"frappe_openapi.generator.get_whitelisted_method_records",
 				return_value=[{"name": "frappe_openapi.ping", "kind": "app"}],
@@ -107,6 +107,7 @@ class TestGeneratedOpenAPISpecs(TestCase):
 		):
 			bundle = build_app_bundle("frappe_openapi", generated_at="2026-05-24T20:00:00Z")
 
+		get_doctype_names.assert_called_once_with(app="frappe_openapi", include_child_tables=False)
 		response_schema = bundle["paths"]["/api/v2/document/ToDo"]["get"]["responses"]["200"]["content"][
 			"application/json"
 		]["schema"]
@@ -144,6 +145,7 @@ class TestGeneratedOpenAPISpecs(TestCase):
 
 	def test_build_app_bundle_does_not_overwrite_embedded_doctype_file_methods(self):
 		doctype_method = "frappe_openapi.desk.doctype.todo.todo.file_method"
+		child_method = "frappe_openapi.desk.doctype.todo_item.todo_item.file_method"
 		doctype_spec = {
 			"paths": {
 				f"/api/v2/method/{doctype_method}": {
@@ -158,10 +160,13 @@ class TestGeneratedOpenAPISpecs(TestCase):
 
 		with (
 			patch("frappe_openapi.generator.get_installed_apps", return_value=["frappe_openapi"]),
-			patch("frappe_openapi.generator.get_doctype_names", return_value=["ToDo"]),
+			patch("frappe_openapi.generator.get_doctype_names", return_value=["ToDo"]) as get_doctype_names,
 			patch(
 				"frappe_openapi.generator.get_whitelisted_method_records",
-				return_value=[{"name": doctype_method, "kind": "doctype"}],
+				return_value=[
+					{"name": doctype_method, "kind": "doctype", "doctype": "ToDo"},
+					{"name": child_method, "kind": "doctype", "doctype": "ToDo Item"},
+				],
 			),
 			patch("frappe_openapi.generator.build_doctype_spec", return_value=doctype_spec),
 			patch("frappe_openapi.generator.build_method_spec") as build_method_spec,
@@ -171,6 +176,7 @@ class TestGeneratedOpenAPISpecs(TestCase):
 		):
 			bundle = build_app_bundle("frappe_openapi", generated_at="2026-05-24T20:00:00Z")
 
+		get_doctype_names.assert_called_once_with(app="frappe_openapi", include_child_tables=False)
 		build_method_spec.assert_not_called()
 		operation = bundle["paths"][f"/api/v2/method/{doctype_method}"]["post"]
 		self.assertEqual(operation["x-frappe-operation-group"], "file")

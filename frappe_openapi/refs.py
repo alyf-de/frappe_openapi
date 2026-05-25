@@ -106,3 +106,7 @@ def api_doctype_path(doctype: str) -> str:
 
 def api_doctype_name_path(doctype: str) -> str:
 	return f"{api_doctype_path(doctype)}/{{name}}"
+
+
+def api_single_doctype_path(doctype: str) -> str:
+	return f"{api_doctype_path(doctype)}/{doctype}"

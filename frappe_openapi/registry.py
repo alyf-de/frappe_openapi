@@ -21,10 +21,16 @@ def get_installed_apps() -> list[str]:
 
 
 @site_cache(ttl=REGISTRY_CACHE_TTL)
-def get_doctype_records(app: str | None = None, module: str | None = None) -> list[dict]:
+def get_doctype_records(
+	app: str | None = None,
+	module: str | None = None,
+	include_child_tables: bool = True,
+) -> list[dict]:
 	filters = {}
 	if module:
 		filters["module"] = module
+	if not include_child_tables:
+		filters["istable"] = 0
 
 	doctypes = frappe.get_all(
 		"DocType",
@@ -40,8 +46,19 @@ def get_doctype_records(app: str | None = None, module: str | None = None) -> li
 	return [doctype for doctype in doctypes if app_map.get(doctype.name) == app]
 
 
-def get_doctype_names(app: str | None = None, module: str | None = None) -> list[str]:
-	return [doctype.name for doctype in get_doctype_records(app=app, module=module)]
+def get_doctype_names(
+	app: str | None = None,
+	module: str | None = None,
+	include_child_tables: bool = True,
+) -> list[str]:
+	return [
+		doctype.name
+		for doctype in get_doctype_records(
+			app=app,
+			module=module,
+			include_child_tables=include_child_tables,
+		)
+	]
 
 
 def get_modules_by_app(app: str) -> dict[str, list[str]]:

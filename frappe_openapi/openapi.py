@@ -12,6 +12,7 @@ from frappe_openapi.refs import (
 	absolute_url,
 	api_doctype_name_path,
 	api_doctype_path,
+	api_single_doctype_path,
 	app_document_path,
 	auth_document_path,
 	component_schema_ref,
@@ -364,7 +365,7 @@ def build_app_spec(app: str) -> dict:
 
 @redis_cache(ttl=SPEC_CACHE_TTL)
 def build_module_spec(app: str, module: str) -> dict:
-	doctypes = get_doctype_names(app=app, module=module)
+	doctypes = get_doctype_names(app=app, module=module, include_child_tables=False)
 	methods = get_whitelisted_methods(app=app, module=module, kind="module")
 
 	return with_base_openapi_fields(
@@ -394,24 +395,49 @@ def build_doctype_spec(doctype: str) -> dict:
 	meta = frappe.get_meta(doctype)
 	app = get_app_for_doctype(doctype)
 	collection_path = api_doctype_path(doctype)
-	name_path = api_doctype_name_path(doctype)
-	copy_path = f"{name_path}/copy"
-	method_path = f"{name_path}/method/{{method}}/"
 	meta_path = f"/api/v2/doctype/{doctype}/meta"
-	count_path = f"/api/v2/doctype/{doctype}/count"
 	doc_methods = get_doctype_whitelisted_methods(doctype)
 	file_methods = get_whitelisted_method_records(
 		app=app, module=meta.module, doctype=doctype, kind="doctype"
 	)
-	paths = {
-		collection_path: with_doctype_operation_group(build_collection_path_item(doctype), "crud"),
-		name_path: with_doctype_operation_group(build_document_path_item(doctype), "crud"),
-		copy_path: with_doctype_operation_group(build_copy_path_item(doctype), "standard"),
-		method_path: with_doctype_operation_group(build_doc_method_path_item(doctype), "controller"),
-		meta_path: with_doctype_operation_group(build_meta_path_item(doctype), "standard"),
-		count_path: with_doctype_operation_group(build_count_path_item(doctype), "standard"),
-	}
-	paths.update(build_doc_controller_method_paths(doctype, doc_methods, name_path))
+
+	if meta.istable:
+		paths = {
+			meta_path: with_doctype_operation_group(build_meta_path_item(doctype), "standard"),
+		}
+	elif meta.issingle:
+		name_path = api_single_doctype_path(doctype)
+		method_path = f"{name_path}/method/{{method}}/"
+		paths = {
+			name_path: with_doctype_operation_group(build_single_document_path_item(doctype), "crud"),
+			method_path: with_doctype_operation_group(
+				build_doc_method_path_item(doctype, include_name_parameter=False), "controller"
+			),
+			meta_path: with_doctype_operation_group(build_meta_path_item(doctype), "standard"),
+		}
+		paths.update(
+			build_doc_controller_method_paths(
+				doctype,
+				doc_methods,
+				name_path,
+				include_name_parameter=False,
+			)
+		)
+	else:
+		name_path = api_doctype_name_path(doctype)
+		copy_path = f"{name_path}/copy"
+		method_path = f"{name_path}/method/{{method}}/"
+		count_path = f"/api/v2/doctype/{doctype}/count"
+		paths = {
+			collection_path: with_doctype_operation_group(build_collection_path_item(doctype), "crud"),
+			name_path: with_doctype_operation_group(build_document_path_item(doctype), "crud"),
+			copy_path: with_doctype_operation_group(build_copy_path_item(doctype), "standard"),
+			method_path: with_doctype_operation_group(build_doc_method_path_item(doctype), "controller"),
+			meta_path: with_doctype_operation_group(build_meta_path_item(doctype), "standard"),
+			count_path: with_doctype_operation_group(build_count_path_item(doctype), "standard"),
+		}
+		paths.update(build_doc_controller_method_paths(doctype, doc_methods, name_path))
+
 	paths.update(build_doctype_file_method_paths(doctype, file_methods))
 
 	return with_base_openapi_fields(
@@ -424,10 +450,12 @@ def build_doctype_spec(doctype: str) -> dict:
 				"securitySchemes": build_security_schemes(),
 			},
 			"security": default_security_requirements(),
-			"tags": doctype_operation_tags(doctype),
+			"tags": doctype_operation_tags(doctype, meta, paths),
 			"x-frappe-app": app,
 			"x-frappe-module": meta.module,
 			"x-frappe-doctype": doctype,
+			"x-frappe-issingle": bool(meta.issingle),
+			"x-frappe-istable": bool(meta.istable),
 			"x-frappe-schema": schema_document_path(doctype),
 			"x-frappe-doc-methods": [serialize_doc_method(method) for method in doc_methods],
 			"x-frappe-file-methods": [serialize_file_method(method, doctype) for method in file_methods],
@@ -477,16 +505,42 @@ def build_doctype_model_component_schemas(doctype: str) -> dict:
 	if doctype != "DocType":
 		model_refs.append(("DocType", "Read"))
 
+	schema_documents = {}
+	index = 0
+	while index < len(model_refs):
+		schema_doctype, schema_name = model_refs[index]
+		index += 1
+
+		schema_document = schema_documents.setdefault(
+			schema_doctype,
+			build_schema_document(schema_doctype),
+		)
+		if schema_doctype != "DocType":
+			collect_available_schema_refs(schema_document["$defs"][schema_name], model_refs)
+
 	available_refs = set(model_refs)
 	schemas = {}
 	for schema_doctype, schema_name in model_refs:
-		schema_document = build_schema_document(schema_doctype)
+		schema_document = schema_documents[schema_doctype]
 		schemas[schema_component_name(schema_doctype, schema_name)] = localize_available_schema_refs(
 			schema_document["$defs"][schema_name],
 			available_refs,
 		)
 
 	return schemas
+
+
+def collect_available_schema_refs(value: Any, model_refs: list[tuple[str, str]]) -> None:
+	if isinstance(value, dict):
+		ref = value.get("$ref")
+		if isinstance(ref, str) and (schema_ref := parse_doctype_schema_ref(ref)) and schema_ref not in model_refs:
+			model_refs.append(schema_ref)
+
+		for item in value.values():
+			collect_available_schema_refs(item, model_refs)
+	elif isinstance(value, list):
+		for item in value:
+			collect_available_schema_refs(item, model_refs)
 
 
 def localize_available_schema_refs(value: Any, available_refs: set[tuple[str, str]]) -> Any:
@@ -660,7 +714,8 @@ def doctype_document_entry(app: str, module: str, doctype: str) -> dict:
 def build_search_index() -> dict:
 	items = []
 	apps = get_installed_apps()
-	doctypes = get_doctype_records()
+	doctypes = get_doctype_records(include_child_tables=False)
+	doctype_names = {doctype.name for doctype in doctypes}
 
 	for app in apps:
 		items.append(search_index_item(app, "App", app_document_path(app), app=app, keywords="app modules doctypes methods"))
@@ -712,6 +767,9 @@ def build_search_index() -> dict:
 			)
 
 	for method in get_whitelisted_method_records():
+		if method.get("kind") == "doctype" and method.get("doctype") not in doctype_names:
+			continue
+
 		method_type = {
 			"app": "App Method",
 			"module": "Module Method",
@@ -857,6 +915,19 @@ def build_document_path_item(doctype: str) -> dict:
 	}
 
 
+def build_single_document_path_item(doctype: str) -> dict:
+	return {
+		"get": {
+			"operationId": operation_id("read", doctype),
+			"tags": [doctype],
+			"summary": f"Read the {doctype} singleton document.",
+			"responses": standard_schema_responses({"$ref": component_schema_ref(doctype, "ReadResponse")}),
+		},
+		"put": single_update_operation(doctype, "put"),
+		"patch": single_update_operation(doctype, "patch"),
+	}
+
+
 def build_copy_path_item(doctype: str) -> dict:
 	return {
 		"parameters": [name_parameter()],
@@ -869,18 +940,32 @@ def build_copy_path_item(doctype: str) -> dict:
 	}
 
 
-def build_doc_method_path_item(doctype: str) -> dict:
+def build_doc_method_path_item(doctype: str, include_name_parameter: bool = True) -> dict:
+	parameters = [method_parameter()]
+	if include_name_parameter:
+		parameters.insert(0, name_parameter())
+
 	return {
-		"parameters": [name_parameter(), method_parameter()],
+		"parameters": parameters,
 		"get": doc_method_operation(doctype, "get"),
 		"post": doc_method_operation(doctype, "post"),
 	}
 
 
-def build_doc_controller_method_paths(doctype: str, doc_methods: list[dict], name_path: str) -> dict:
+def build_doc_controller_method_paths(
+	doctype: str,
+	doc_methods: list[dict],
+	name_path: str,
+	include_name_parameter: bool = True,
+) -> dict:
 	return {
 		f"{name_path}/method/{quote_segment(method['name'])}/": with_doctype_operation_group(
-			build_doc_controller_method_path_item(doctype, method), "controller"
+			build_doc_controller_method_path_item(
+				doctype,
+				method,
+				include_name_parameter=include_name_parameter,
+			),
+			"controller",
 		)
 		for method in doc_methods
 	}
@@ -914,8 +999,15 @@ def build_doctype_file_method_path_item(doctype: str, method: dict) -> dict:
 	return path_item
 
 
-def build_doc_controller_method_path_item(doctype: str, method: dict) -> dict:
-	path_item = {"parameters": [name_parameter()]}
+def build_doc_controller_method_path_item(
+	doctype: str,
+	method: dict,
+	include_name_parameter: bool = True,
+) -> dict:
+	path_item = {}
+	if include_name_parameter:
+		path_item["parameters"] = [name_parameter()]
+
 	for http_method in method["http_methods"]:
 		path_item[http_method.lower()] = doc_controller_method_operation(doctype, method, http_method)
 
@@ -940,15 +1032,32 @@ def serialize_file_method(method: dict, doctype: str) -> dict:
 	}
 
 
-def doctype_operation_tags(doctype: str) -> list[dict]:
+def doctype_operation_tags(doctype: str, meta=None, paths: dict | None = None) -> list[dict]:
+	operation_groups = list(DOCTYPE_OPERATION_GROUPS)
+	if paths is not None:
+		used_groups = {
+			operation.get("x-frappe-operation-group")
+			for path_item in paths.values()
+			for operation in path_item.values()
+			if isinstance(operation, dict)
+		}
+		operation_groups = [group for group in operation_groups if group in used_groups]
+
 	return [
 		{
 			"name": doctype_operation_tag(group),
-			"description": DOCTYPE_OPERATION_DESCRIPTIONS[group].format(doctype=doctype),
+			"description": doctype_operation_description(group, doctype, meta),
 			"x-frappe-operation-group": group,
 		}
-		for group in DOCTYPE_OPERATION_GROUPS
+		for group in operation_groups
 	]
+
+
+def doctype_operation_description(group: str, doctype: str, meta=None) -> str:
+	if group == "crud" and getattr(meta, "issingle", False):
+		return f"Read and update the {doctype} singleton document."
+
+	return DOCTYPE_OPERATION_DESCRIPTIONS[group].format(doctype=doctype)
 
 
 def doctype_operation_tag(group: str) -> str:
@@ -994,6 +1103,12 @@ def update_operation(doctype: str, http_method: str) -> dict:
 		"requestBody": json_request_body({"$ref": component_schema_ref(doctype, "Update")}, required=True),
 		"responses": standard_schema_responses({"$ref": component_schema_ref(doctype, "UpdateResponse")}),
 	}
+
+
+def single_update_operation(doctype: str, http_method: str) -> dict:
+	operation = update_operation(doctype, http_method)
+	operation["summary"] = f"Update the {doctype} singleton document."
+	return operation
 
 
 def doc_method_operation(doctype: str, http_method: str) -> dict:

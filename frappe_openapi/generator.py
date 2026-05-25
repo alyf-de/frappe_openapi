@@ -51,8 +51,13 @@ def generate_app_bundles(apps: list[str] | None = None, output: str | Path | Non
 def build_app_bundle(app: str, generated_at: str | None = None) -> dict:
 	validate_apps([app])
 	generated_at = generated_at or now_utc()
-	doctypes = get_doctype_names(app=app)
-	methods = get_whitelisted_method_records(app=app)
+	doctypes = get_doctype_names(app=app, include_child_tables=False)
+	doctype_set = set(doctypes)
+	methods = [
+		method
+		for method in get_whitelisted_method_records(app=app)
+		if method.get("kind") != "doctype" or method.get("doctype") in doctype_set
+	]
 	standalone_methods = [
 		method["name"]
 		for method in methods
