@@ -11,6 +11,7 @@ class TestDocTypeOpenAPI(TestCase):
 
 	def test_doctype_spec_embeds_file_level_methods(self):
 		method_name = "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_payment_request"
+		meta = SimpleNamespace(module="Accounts", fields=[], istable=False)
 		file_method = {
 			"name": method_name,
 			"app": "erpnext",
@@ -22,7 +23,7 @@ class TestDocTypeOpenAPI(TestCase):
 		}
 
 		with (
-			patch.object(openapi.frappe, "get_meta", return_value=SimpleNamespace(module="Accounts")),
+			patch.object(openapi.frappe, "get_meta", return_value=meta),
 			patch.object(openapi.frappe, "override_whitelisted_method", side_effect=lambda method: method),
 			patch.object(openapi.frappe, "get_attr", return_value=self.file_method),
 			patch("frappe_openapi.openapi.get_app_for_doctype", return_value="erpnext"),
@@ -37,7 +38,7 @@ class TestDocTypeOpenAPI(TestCase):
 		self.assertIn(method_path, spec["paths"])
 		self.assertEqual(
 			spec["paths"][method_path]["get"]["tags"],
-			["Sales Invoice File-level RPC"],
+			["File-level RPC"],
 		)
 		self.assertEqual(spec["paths"][method_path]["get"]["x-frappe-operation-group"], "file")
 		self.assertEqual(spec["paths"][method_path]["get"]["x-frappe-file-method"], method_name)
@@ -48,14 +49,38 @@ class TestDocTypeOpenAPI(TestCase):
 			"crud",
 		)
 		self.assertEqual(
+			spec["paths"]["/api/v2/document/Sales Invoice"]["get"]["responses"]["200"]["content"][
+				"application/json"
+			]["schema"]["$ref"],
+			"#/components/schemas/Sales_Invoice_ListResponse",
+		)
+		self.assertEqual(
+			spec["paths"]["/api/v2/document/Sales Invoice"]["post"]["requestBody"]["content"][
+				"application/json"
+			]["schema"]["$ref"],
+			"#/components/schemas/Sales_Invoice_Create",
+		)
+		self.assertEqual(
 			spec["paths"]["/api/v2/doctype/Sales Invoice/count"]["get"]["x-frappe-operation-group"],
 			"standard",
 		)
+		schemas = spec["components"]["schemas"]
+		self.assertNotIn("$ref", schemas["Sales_Invoice_Create"])
+		self.assertEqual(schemas["Sales_Invoice_Create"]["title"], "Sales Invoice Create")
+		self.assertEqual(schemas["Sales_Invoice_Create"]["x-frappe-schema-mode"], "create")
+		self.assertEqual(
+			schemas["Sales_Invoice_ListResponse"]["properties"]["data"]["items"]["anyOf"][0]["$ref"],
+			"#/components/schemas/Sales_Invoice_ListItem",
+		)
+		self.assertNotIn("$ref", schemas["DocType_Read"])
+		self.assertEqual(schemas["DocType_Read"]["title"], "DocType Read")
 		self.assertEqual(
 			spec["x-frappe-openapi-documents"]["file_methods"],
 			{method_name: "/openapi/doctypes/Sales%20Invoice.json"},
 		)
-		self.assertEqual(spec["x-frappe-file-methods"][0]["included_in"], "/openapi/doctypes/Sales%20Invoice.json")
+		self.assertEqual(
+			spec["x-frappe-file-methods"][0]["included_in"], "/openapi/doctypes/Sales%20Invoice.json"
+		)
 
 	def test_search_index_routes_doctype_file_methods_to_doctype_spec(self):
 		method_name = "erpnext.accounts.doctype.sales_invoice.sales_invoice.make_payment_request"

@@ -48,16 +48,32 @@ class TestGeneratedOpenAPISpecs(TestCase):
 								"description": "OK",
 								"content": {
 									"application/json": {
-										"schema": {
-											"$ref": "/openapi/schemas/ToDo.schema.json#/$defs/Read"
-										}
+										"schema": {"$ref": "#/components/schemas/ToDo_ReadResponse"}
 									}
 								},
 							}
 						},
 					}
 				}
-			}
+			},
+			"components": {
+				"schemas": {
+					"ToDo_Read": {"$ref": "/openapi/schemas/ToDo.schema.json#/$defs/Read"},
+					"ToDo_Create": {
+						"type": "object",
+						"properties": {
+							"items": {
+								"type": "array",
+								"items": {"$ref": "/openapi/schemas/ToDo%20Item.schema.json#/$defs/Create"},
+							},
+						},
+					},
+					"ToDo_ReadResponse": {
+						"type": "object",
+						"properties": {"data": {"$ref": "#/components/schemas/ToDo_Read"}},
+					},
+				}
+			},
 		}
 		method_spec = {
 			"paths": {
@@ -81,7 +97,10 @@ class TestGeneratedOpenAPISpecs(TestCase):
 			patch("frappe_openapi.generator.build_method_spec", return_value=method_spec),
 			patch(
 				"frappe_openapi.generator.build_component_schemas",
-				return_value={"ToDo_Read": {"type": "object"}},
+				return_value={
+					"ToDo_Read": {"type": "object"},
+					"ToDo_Item_Create": {"type": "object"},
+				},
 			),
 			patch("frappe_openapi.openapi.absolute_url", side_effect=lambda path: path),
 			patch("frappe_openapi.openapi.get_spec_version", return_value="frappe_openapi:1.0.0"),
@@ -95,8 +114,27 @@ class TestGeneratedOpenAPISpecs(TestCase):
 		self.assertEqual(bundle["openapi"], "3.2.0")
 		self.assertEqual(bundle["$self"], "/openapi/generated/apps/frappe_openapi.json")
 		self.assertEqual(bundle["info"]["title"], "frappe_openapi Generated API")
-		self.assertEqual(bundle["components"]["schemas"], {"ToDo_Read": {"type": "object"}})
-		self.assertEqual(response_schema["$ref"], "#/components/schemas/ToDo_Read")
+		self.assertEqual(
+			bundle["components"]["schemas"],
+			{
+				"ToDo_Create": {
+					"type": "object",
+					"properties": {
+						"items": {
+							"type": "array",
+							"items": {"$ref": "#/components/schemas/ToDo_Item_Create"},
+						},
+					},
+				},
+				"ToDo_Read": {"type": "object"},
+				"ToDo_Item_Create": {"type": "object"},
+				"ToDo_ReadResponse": {
+					"type": "object",
+					"properties": {"data": {"$ref": "#/components/schemas/ToDo_Read"}},
+				},
+			},
+		)
+		self.assertEqual(response_schema["$ref"], "#/components/schemas/ToDo_ReadResponse")
 		self.assertEqual(bundle["x-frappe-app"], "frappe_openapi")
 		self.assertEqual(bundle["x-frappe-generated-at"], "2026-05-24T20:00:00Z")
 		self.assertEqual(bundle["x-frappe-doctypes"], ["ToDo"])

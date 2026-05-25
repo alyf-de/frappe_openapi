@@ -1,5 +1,5 @@
 import inspect
-from typing import get_type_hints
+from typing import Any, get_type_hints
 
 import frappe
 from frappe.utils.caching import redis_cache
@@ -14,11 +14,14 @@ from frappe_openapi.refs import (
 	api_doctype_path,
 	app_document_path,
 	auth_document_path,
+	component_schema_ref,
 	doctype_document_path,
 	doctype_schema_ref,
 	method_document_path,
 	module_document_path,
+	parse_doctype_schema_ref,
 	quote_segment,
+	schema_component_name,
 	schema_document_path,
 	unquote_segment,
 )
@@ -55,6 +58,7 @@ DOCTYPE_OPERATION_DESCRIPTIONS = {
 	"controller": "Run whitelisted {doctype} controller methods against an existing document.",
 	"file": "Run whitelisted functions defined in the {doctype} DocType module.",
 }
+DOCTYPE_MODEL_SCHEMA_NAMES = ("Read", "Create", "Update", "ListItem", "ExpandedListItem", "Name")
 
 
 def get_document(path: str) -> dict:
@@ -396,7 +400,9 @@ def build_doctype_spec(doctype: str) -> dict:
 	meta_path = f"/api/v2/doctype/{doctype}/meta"
 	count_path = f"/api/v2/doctype/{doctype}/count"
 	doc_methods = get_doctype_whitelisted_methods(doctype)
-	file_methods = get_whitelisted_method_records(app=app, module=meta.module, doctype=doctype, kind="doctype")
+	file_methods = get_whitelisted_method_records(
+		app=app, module=meta.module, doctype=doctype, kind="doctype"
+	)
 	paths = {
 		collection_path: with_doctype_operation_group(build_collection_path_item(doctype), "crud"),
 		name_path: with_doctype_operation_group(build_document_path_item(doctype), "crud"),
@@ -413,7 +419,10 @@ def build_doctype_spec(doctype: str) -> dict:
 		f"{doctype} API",
 		{
 			"paths": paths,
-			"components": {"securitySchemes": build_security_schemes()},
+			"components": {
+				"schemas": build_doctype_component_schemas(doctype),
+				"securitySchemes": build_security_schemes(),
+			},
 			"security": default_security_requirements(),
 			"tags": doctype_operation_tags(doctype),
 			"x-frappe-app": app,
@@ -427,6 +436,78 @@ def build_doctype_spec(doctype: str) -> dict:
 			},
 		},
 	)
+
+
+def build_doctype_component_schemas(doctype: str) -> dict:
+	schemas = build_doctype_model_component_schemas(doctype)
+	schemas.update(
+		{
+			schema_component_name(doctype, "ListResponse"): frappe_data_schema(
+				{
+					"type": "array",
+					"items": doctype_list_item_response_schema(doctype),
+				}
+			),
+			schema_component_name(doctype, "ReadResponse"): frappe_data_schema(
+				{"$ref": component_schema_ref(doctype, "Read")}
+			),
+			schema_component_name(doctype, "CreateResponse"): frappe_data_schema(
+				{"$ref": component_schema_ref(doctype, "Read")}
+			),
+			schema_component_name(doctype, "UpdateResponse"): frappe_data_schema(
+				{"$ref": component_schema_ref(doctype, "Read")}
+			),
+			schema_component_name(doctype, "CopyResponse"): frappe_data_schema(
+				{"$ref": component_schema_ref(doctype, "Create")}
+			),
+			schema_component_name(doctype, "DeleteResponse"): frappe_data_schema(
+				{"$ref": component_schema_ref(doctype, "Name")}
+			),
+			schema_component_name(doctype, "CountResponse"): frappe_data_schema({"type": "integer"}),
+			schema_component_name("DocType", "ReadResponse"): frappe_data_schema(
+				{"$ref": component_schema_ref("DocType", "Read")}
+			),
+		}
+	)
+	return schemas
+
+
+def build_doctype_model_component_schemas(doctype: str) -> dict:
+	model_refs = [(doctype, schema_name) for schema_name in DOCTYPE_MODEL_SCHEMA_NAMES]
+	if doctype != "DocType":
+		model_refs.append(("DocType", "Read"))
+
+	available_refs = set(model_refs)
+	schemas = {}
+	for schema_doctype, schema_name in model_refs:
+		schema_document = build_schema_document(schema_doctype)
+		schemas[schema_component_name(schema_doctype, schema_name)] = localize_available_schema_refs(
+			schema_document["$defs"][schema_name],
+			available_refs,
+		)
+
+	return schemas
+
+
+def localize_available_schema_refs(value: Any, available_refs: set[tuple[str, str]]) -> Any:
+	if isinstance(value, dict):
+		rewritten = {}
+		for key, item in value.items():
+			if (
+				key == "$ref"
+				and isinstance(item, str)
+				and (schema_ref := parse_doctype_schema_ref(item)) in available_refs
+			):
+				ref_doctype, ref_schema_name = schema_ref
+				rewritten[key] = component_schema_ref(ref_doctype, ref_schema_name)
+			else:
+				rewritten[key] = localize_available_schema_refs(item, available_refs)
+		return rewritten
+
+	if isinstance(value, list):
+		return [localize_available_schema_refs(item, available_refs) for item in value]
+
+	return value
 
 
 @redis_cache(ttl=SPEC_CACHE_TTL)
@@ -722,19 +803,16 @@ def build_collection_path_item(doctype: str) -> dict:
 			"tags": [doctype],
 			"summary": f"List {doctype} documents.",
 			"parameters": [list_querystring_parameter()],
-			"responses": standard_responses(
-				{
-					"type": "array",
-					"items": doctype_list_item_response_schema(doctype),
-				}
-			),
+			"responses": standard_schema_responses({"$ref": component_schema_ref(doctype, "ListResponse")}),
 		},
 		"post": {
 			"operationId": operation_id("create", doctype),
 			"tags": [doctype],
 			"summary": f"Create a {doctype} document.",
-			"requestBody": json_request_body({"$ref": doctype_schema_ref(doctype, "Create")}, required=True),
-			"responses": standard_responses({"$ref": doctype_schema_ref(doctype, "Read")}),
+			"requestBody": json_request_body(
+				{"$ref": component_schema_ref(doctype, "Create")}, required=True
+			),
+			"responses": standard_schema_responses({"$ref": component_schema_ref(doctype, "CreateResponse")}),
 		},
 	}
 
@@ -743,8 +821,8 @@ def doctype_list_item_response_schema(doctype: str) -> dict:
 	return {
 		"description": "By default, each item contains only `name`. If `fields` is provided, returned properties follow the requested field list.",
 		"anyOf": [
-			{"$ref": doctype_schema_ref(doctype, "ListItem")},
-			{"$ref": doctype_schema_ref(doctype, "ExpandedListItem")},
+			{"$ref": component_schema_ref(doctype, "ListItem")},
+			{"$ref": component_schema_ref(doctype, "ExpandedListItem")},
 		],
 	}
 
@@ -756,7 +834,7 @@ def build_document_path_item(doctype: str) -> dict:
 			"operationId": operation_id("read", doctype),
 			"tags": [doctype],
 			"summary": f"Read a {doctype} document.",
-			"responses": standard_responses({"$ref": doctype_schema_ref(doctype, "Read")}),
+			"responses": standard_schema_responses({"$ref": component_schema_ref(doctype, "ReadResponse")}),
 		},
 		"put": update_operation(doctype, "put"),
 		"patch": update_operation(doctype, "patch"),
@@ -767,7 +845,11 @@ def build_document_path_item(doctype: str) -> dict:
 			"responses": {
 				"202": {
 					"description": "Document deletion accepted.",
-					"content": {"application/json": {"schema": frappe_data_schema({"type": "string"})}},
+					"content": {
+						"application/json": {
+							"schema": {"$ref": component_schema_ref(doctype, "DeleteResponse")}
+						}
+					},
 				},
 				"default": error_response(),
 			},
@@ -782,7 +864,7 @@ def build_copy_path_item(doctype: str) -> dict:
 			"operationId": operation_id("copy", doctype),
 			"tags": [doctype],
 			"summary": f"Return a copy of a {doctype} document.",
-			"responses": standard_responses({"$ref": doctype_schema_ref(doctype, "Create")}),
+			"responses": standard_schema_responses({"$ref": component_schema_ref(doctype, "CopyResponse")}),
 		},
 	}
 
@@ -887,7 +969,7 @@ def build_meta_path_item(doctype: str) -> dict:
 			"operationId": operation_id("meta", doctype),
 			"tags": [doctype],
 			"summary": f"Read {doctype} metadata.",
-			"responses": standard_responses({"$ref": doctype_schema_ref("DocType", "Read")}),
+			"responses": standard_schema_responses({"$ref": component_schema_ref("DocType", "ReadResponse")}),
 		},
 	}
 
@@ -899,7 +981,7 @@ def build_count_path_item(doctype: str) -> dict:
 			"tags": [doctype],
 			"summary": f"Count {doctype} documents.",
 			"parameters": [list_querystring_parameter()],
-			"responses": standard_responses({"type": "integer"}),
+			"responses": standard_schema_responses({"$ref": component_schema_ref(doctype, "CountResponse")}),
 		},
 	}
 
@@ -909,8 +991,8 @@ def update_operation(doctype: str, http_method: str) -> dict:
 		"operationId": operation_id(http_method, doctype),
 		"tags": [doctype],
 		"summary": f"Update a {doctype} document.",
-		"requestBody": json_request_body({"$ref": doctype_schema_ref(doctype, "Update")}, required=True),
-		"responses": standard_responses({"$ref": doctype_schema_ref(doctype, "Read")}),
+		"requestBody": json_request_body({"$ref": component_schema_ref(doctype, "Update")}, required=True),
+		"responses": standard_schema_responses({"$ref": component_schema_ref(doctype, "UpdateResponse")}),
 	}
 
 
@@ -1102,10 +1184,14 @@ def json_request_body(schema: dict, required: bool = False) -> dict:
 
 def standard_responses(data_schema: dict) -> dict:
 	success_status = "200"
+	return standard_schema_responses(frappe_data_schema(data_schema), success_status=success_status)
+
+
+def standard_schema_responses(response_schema: dict, success_status: str = "200") -> dict:
 	return {
 		success_status: {
 			"description": "Successful response.",
-			"content": {"application/json": {"schema": frappe_data_schema(data_schema)}},
+			"content": {"application/json": {"schema": response_schema}},
 		},
 		"default": error_response(),
 	}

@@ -1,8 +1,6 @@
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import frappe
 
@@ -17,14 +15,12 @@ from frappe_openapi.refs import (
 	generated_app_document_path,
 	generated_manifest_path,
 	generated_site_document_path,
-	unquote_segment,
+	parse_doctype_schema_ref,
+	schema_component_name,
 )
 from frappe_openapi.registry import get_doctype_names, get_installed_apps, get_whitelisted_method_records
 from frappe_openapi.schema import build_schema_document
 from frappe_openapi.storage import write_app_bundle, write_manifest
-
-SCHEMA_PATH_PREFIX = "/openapi/schemas/"
-SCHEMA_PATH_SUFFIX = ".schema.json"
 
 
 def generate_app_bundles(apps: list[str] | None = None, output: str | Path | None = None) -> dict:
@@ -63,22 +59,29 @@ def build_app_bundle(app: str, generated_at: str | None = None) -> dict:
 		if method.get("kind") != "doctype"
 	]
 	paths = {}
+	schemas = {}
 	tags = set()
 	schema_queue = list(doctypes)
 
 	for doctype in doctypes:
 		doctype_spec = build_doctype_spec(doctype)
+		doctype_schemas = doctype_spec.get("components", {}).get("schemas", {})
 		collect_schema_doctypes(doctype_spec.get("paths", {}), schema_queue)
+		collect_schema_doctypes(doctype_schemas, schema_queue)
 		paths.update(rewrite_schema_refs(doctype_spec.get("paths", {})))
+		schemas.update(rewrite_schema_refs(doctype_schemas))
 		collect_tags(doctype_spec.get("paths", {}), tags)
 
 	for method in standalone_methods:
 		method_spec = build_method_spec(method)
+		method_schemas = method_spec.get("components", {}).get("schemas", {})
 		collect_schema_doctypes(method_spec.get("paths", {}), schema_queue)
+		collect_schema_doctypes(method_schemas, schema_queue)
 		paths.update(rewrite_schema_refs(method_spec.get("paths", {})))
+		schemas.update(rewrite_schema_refs(method_schemas))
 		collect_tags(method_spec.get("paths", {}), tags)
 
-	schemas = build_component_schemas(schema_queue)
+	schemas.update(build_component_schemas(schema_queue))
 
 	return with_base_openapi_fields(
 		generated_app_document_path(app),
@@ -185,7 +188,7 @@ def rewrite_schema_refs(value: Any) -> Any:
 	if isinstance(value, dict):
 		rewritten = {}
 		for key, item in value.items():
-			if key == "$ref" and isinstance(item, str) and (schema_ref := parse_schema_ref(item)):
+			if key == "$ref" and isinstance(item, str) and (schema_ref := parse_doctype_schema_ref(item)):
 				doctype, schema_name = schema_ref
 				rewritten[key] = f"#/components/schemas/{schema_component_name(doctype, schema_name)}"
 			else:
@@ -201,7 +204,7 @@ def rewrite_schema_refs(value: Any) -> Any:
 def collect_schema_doctypes(value: Any, doctypes: list[str]) -> None:
 	if isinstance(value, dict):
 		ref = value.get("$ref")
-		if isinstance(ref, str) and (schema_ref := parse_schema_ref(ref)):
+		if isinstance(ref, str) and (schema_ref := parse_doctype_schema_ref(ref)):
 			doctype = schema_ref[0]
 			if doctype not in doctypes:
 				doctypes.append(doctype)
@@ -217,28 +220,6 @@ def collect_tags(paths: dict, tags: set[str]) -> None:
 		for operation in path_item.values():
 			if isinstance(operation, dict):
 				tags.update(operation.get("tags", []))
-
-
-def parse_schema_ref(ref: str) -> tuple[str, str] | None:
-	document_path, separator, schema_name = ref.partition("#/$defs/")
-	if not separator:
-		return None
-
-	path = urlparse(document_path).path
-	if not path.startswith(SCHEMA_PATH_PREFIX) or not path.endswith(SCHEMA_PATH_SUFFIX):
-		return None
-
-	doctype = path.removeprefix(SCHEMA_PATH_PREFIX).removesuffix(SCHEMA_PATH_SUFFIX)
-	return unquote_segment(doctype), schema_name
-
-
-def schema_component_name(doctype: str, schema_name: str) -> str:
-	return f"{normalize_component_name(doctype)}_{normalize_component_name(schema_name)}"
-
-
-def normalize_component_name(value: str) -> str:
-	normalized = re.sub(r"[^A-Za-z0-9.-]+", "_", value).strip("_")
-	return normalized or "Schema"
 
 
 def validate_apps(apps: list[str]) -> list[str]:

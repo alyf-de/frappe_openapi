@@ -1,10 +1,13 @@
-from urllib.parse import quote, unquote
+import re
+from urllib.parse import quote, unquote, urlparse
 
 import frappe
 
 OPENAPI_VERSION = "3.2.0"
 OPENAPI_JSON_SCHEMA_DIALECT = "https://spec.openapis.org/oas/3.1/dialect/base"
 JSON_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
+SCHEMA_PATH_PREFIX = "/openapi/schemas/"
+SCHEMA_PATH_SUFFIX = ".schema.json"
 
 
 def absolute_url(path: str) -> str:
@@ -65,6 +68,32 @@ def auth_document_path() -> str:
 
 def doctype_schema_ref(doctype: str, schema_name: str) -> str:
 	return f"{schema_document_path(doctype)}#/$defs/{schema_name}"
+
+
+def parse_doctype_schema_ref(ref: str) -> tuple[str, str] | None:
+	document_path, separator, schema_name = ref.partition("#/$defs/")
+	if not separator:
+		return None
+
+	path = urlparse(document_path).path
+	if not path.startswith(SCHEMA_PATH_PREFIX) or not path.endswith(SCHEMA_PATH_SUFFIX):
+		return None
+
+	doctype = path.removeprefix(SCHEMA_PATH_PREFIX).removesuffix(SCHEMA_PATH_SUFFIX)
+	return unquote_segment(doctype), schema_name
+
+
+def component_schema_ref(doctype: str, schema_name: str) -> str:
+	return f"#/components/schemas/{schema_component_name(doctype, schema_name)}"
+
+
+def schema_component_name(doctype: str, schema_name: str) -> str:
+	return f"{normalize_component_name(doctype)}_{normalize_component_name(schema_name)}"
+
+
+def normalize_component_name(value: str) -> str:
+	normalized = re.sub(r"[^A-Za-z0-9.-]+", "_", value).strip("_")
+	return normalized or "Schema"
 
 
 def doctype_path_item_ref(doctype: str, path: str) -> str:
