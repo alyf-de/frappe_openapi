@@ -11,6 +11,14 @@
 </head>
 <body>
 	<div id="frappe-openapi-page">
+		<div class="frappe-openapi-mobile-bar">
+			<button id="frappe-openapi-nav-toggle" type="button" aria-controls="frappe-openapi-nav" aria-expanded="false" aria-label="Open navigation menu">
+				<span aria-hidden="true"></span>
+				<span aria-hidden="true"></span>
+				<span aria-hidden="true"></span>
+			</button>
+			<span>Frappe OpenAPI</span>
+		</div>
 		<aside id="frappe-openapi-nav" aria-labelledby="frappe-openapi-nav-title">
 			<h1 id="frappe-openapi-nav-title">Frappe OpenAPI</h1>
 			<p>Choose a document to view its operations in Swagger UI.</p>
@@ -21,6 +29,7 @@
 			<div id="frappe-openapi-filter-status" class="frappe-openapi-filter-status" aria-live="polite" hidden></div>
 			<div id="frappe-openapi-nav-sections" aria-label="OpenAPI document groups"></div>
 		</aside>
+		<button id="frappe-openapi-nav-backdrop" type="button" aria-label="Close navigation menu" hidden></button>
 		<main id="frappe-openapi-main">
 			<section id="frappe-openapi-overview">
 				<h2>Explore your Frappe API</h2>

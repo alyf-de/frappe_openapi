@@ -5,6 +5,8 @@ const overview = document.querySelector("#frappe-openapi-overview");
 const swagger = document.querySelector("#swagger-ui");
 const filterInput = document.querySelector("#frappe-openapi-filter");
 const filterStatus = document.querySelector("#frappe-openapi-filter-status");
+const navToggle = document.querySelector("#frappe-openapi-nav-toggle");
+const navBackdrop = document.querySelector("#frappe-openapi-nav-backdrop");
 
 const SEARCH_INDEX_URL = "/openapi/search-index.json";
 const GENERATED_MANIFEST_URL = "/openapi/generated/manifest.json";
@@ -26,6 +28,21 @@ searchResults.hidden = true;
 filterStatus.insertAdjacentElement("afterend", searchResults);
 
 navSections.setAttribute("aria-busy", "true");
+
+function setMobileNavigationOpen(open) {
+	document.body.classList.toggle("frappe-openapi-nav-open", open);
+	navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+	navToggle.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+	navBackdrop.hidden = !open;
+}
+
+function closeMobileNavigation() {
+	setMobileNavigationOpen(false);
+}
+
+function closeMobileNavigationAfterSelection(selection) {
+	Promise.resolve(selection).then(closeMobileNavigation, closeMobileNavigation);
+}
 
 function sortedEntries(value) {
 	return Object.entries(value || {}).sort(([left], [right]) => left.localeCompare(right));
@@ -224,7 +241,7 @@ function createSummary(documentEntry) {
 		summary.classList.add("frappe-openapi-nav-summary-link");
 		summary.dataset.key = documentEntry.key || keyForUrl(documentEntry.url);
 		summary.addEventListener("click", () => {
-			loadSpec(documentEntry.url, summary.dataset.key);
+			closeMobileNavigationAfterSelection(loadSpec(documentEntry.url, summary.dataset.key));
 		});
 	}
 
@@ -257,11 +274,14 @@ function renderNavigationLink(documentEntry, sectionElement) {
 	}
 	link.addEventListener("click", (event) => {
 		event.preventDefault();
+		let selection;
 		if (documentEntry.kind === "overview") {
 			showOverview();
+			selection = Promise.resolve();
 		} else {
-			loadSpec(documentUrl, link.dataset.key);
+			selection = loadSpec(documentUrl, link.dataset.key);
 		}
+		closeMobileNavigationAfterSelection(selection);
 	});
 
 	const label = document.createElement("span");
@@ -703,7 +723,7 @@ function renderSearchResults(results) {
 		}
 		link.addEventListener("click", (event) => {
 			event.preventDefault();
-			loadSpec(itemUrl, link.dataset.key);
+			closeMobileNavigationAfterSelection(loadSpec(itemUrl, link.dataset.key));
 		});
 
 		const label = document.createElement("span");
@@ -889,6 +909,18 @@ async function renderNavigation(sections) {
 filterInput.addEventListener("input", (event) => {
 	const query = event.target.value.trim().toLowerCase();
 	handleFilterInput(query);
+});
+
+navToggle.addEventListener("click", () => {
+	setMobileNavigationOpen(!document.body.classList.contains("frappe-openapi-nav-open"));
+});
+
+navBackdrop.addEventListener("click", closeMobileNavigation);
+
+document.addEventListener("keydown", (event) => {
+	if (event.key === "Escape") {
+		closeMobileNavigation();
+	}
 });
 
 window.addEventListener("popstate", (event) => {
